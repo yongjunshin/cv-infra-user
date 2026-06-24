@@ -1,0 +1,38 @@
+# .github/workflows/verify.yml — consumer E2E verification workflow.
+#
+# STATUS: Phase 0 PLACEHOLDER. Valid YAML, but the real verification is NOT wired
+# yet. It is wired in Phase 5 (CLI-first, Action-after — LOCKED #10): this consumer
+# workflow will call the platform's reusable workflow (`workflow_call`) by released
+# version `@vN` only — never by relative source path (boundary rule #2; `uses:`
+# structurally enforces this). Marketplace + platform action versions are pinned
+# to released versions (no floating branch refs).
+#
+# --- Phase 5 target shape (kept commented until wired) ---------------------------
+# on:
+#   pull_request:            # push -> PR -> Check + sticky comment + artifacts (DoD-P5)
+#
+# jobs:
+#   build-sut:               # fork-PR GPU security boundary (R10): build on ubuntu, not GPU host
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+#       - uses: docker/login-action@v3          # ghcr.io
+#       - uses: docker/build-push-action@v6      # build robot_sw/Dockerfile -> GHCR (ref-only consume)
+#
+#   verify:                  # GPU verification via self-hosted runner
+#     needs: build-sut
+#     uses: <ORG>/<PLATFORM_REPO>/.github/workflows/verify.yml@vN   # reusable workflow_call, pinned @vN
+#     # secrets/inputs: scenarios/, SUT image ref, GITHUB_TOKEN (Check + comment + upload-artifact@v4)
+# ---------------------------------------------------------------------------------
+
+name: "verify (cv-infra E2E) — PLACEHOLDER (wired in P5)"
+
+on:
+  workflow_dispatch: {}     # P5: replace with `pull_request:` to trigger real verification
+
+jobs:
+  scaffold-placeholder:
+    name: scaffold placeholder (no-op until P5)
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "cv-infra-user verify.yml is a Phase 0 scaffold placeholder. Real verification (reusable workflow_call @vN + 2-job build-sut/verify) is wired in Phase 5."
