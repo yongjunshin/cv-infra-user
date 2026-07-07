@@ -15,16 +15,16 @@
 #   - `jazzy-ros-base-noble` = ROS 2 Jazzy, ros-base variant (no desktop/GUI),
 #     Ubuntu Noble pinned explicitly. headless: carter runs rviz-free in CI
 #     (M8 §3.9), so no GUI/desktop layers are pulled in.
-#   - The immutable `@sha256` digest pin is added at first WORKSTATION pull (D-1,
-#     LOCKED #2), NOT here (this CPU build is on the authoring device). Observed
-#     amd64 digest 2026-07-07: sha256:31daab66eef9139933379fb67159449944f4e2dcf2e22c2d12cc715f29873e0f
+#   - The immutable `@sha256` digest pin below was MEASURED at the first WORKSTATION
+#     build (D-1, LOCKED #2) — build log #5, 2026-07-07, per
+#     reports/user-2026-07-07-seam2-carter-topic-inventory.md §2 (fulfilled cycle-3).
 #   - apt package versions are pinned via ARG (observed 2026-07-07). CAVEAT: the ROS
 #     apt repo (packages.ros.org) rotates the datestamp suffix; if these exact
 #     versions have been superseded when the workstation rebuilds (cycle-3), refresh
 #     the ARG defaults (or pass --build-arg). The base-image digest is the immutable
 #     reproducibility anchor; these pins are a best-effort snapshot (§3.3 "where practical").
-FROM ros:jazzy-ros-base-noble
-# P2: FROM ros:jazzy-ros-base-noble@sha256:<digest> — added at first workstation pull (D-1).
+FROM ros:jazzy-ros-base-noble@sha256:31daab66eef9139933379fb67159449944f4e2dcf2e22c2d12cc715f29873e0f
+# P2 digest pin FULFILLED (cycle-3): measured at the first workstation build (D-1).
 
 # Non-interactive apt for reproducible CI builds.
 ARG DEBIAN_FRONTEND=noninteractive
