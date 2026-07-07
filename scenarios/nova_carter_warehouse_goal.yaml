@@ -1,0 +1,57 @@
+# nova_carter_warehouse_goal.yaml — DRAFT standard-input instance (Phase-2 cycle-1).
+#
+# A robot-SW developer's verification request: "drive the Nova Carter to a goal in the
+# warehouse without colliding." This file INSTANTIATES the platform-owned Scenario shape
+# (M1) — CV-User does not define the schema, only exercises it as a consumer.
+#
+# DRAFT status (do not treat as final):
+#   - The Scenario/adapter_config field names/structure are OWNED BY M1 (contract-and-schema),
+#     whose Phase-2 minimal shape is authored in the same cycle. This instance follows the
+#     shape sketch in tasks/user-2026-07-07-p2-scaffold-and-fixture.md and reconciles with
+#     M1's actual shape once published.
+#   - interface.adapter_config.topic_map values are carter's upstream defaults. The REAL
+#     topics Isaac Sim publishes (R7: e.g. /front_3d_lidar/lidar_points vs /point_cloud,
+#     odometry ground-truth vs /chassis/odom) are confirmed on the GPU workstation in a
+#     later Phase-2 cycle. Do NOT hardcode-trust these.
+#   - goal.{x,y,yaw} is a plausible draft within the warehouse map (see below); exact
+#     free-space validity is tuned against the sim on the GPU workstation.
+
+scenario:
+  scene: nova_carter_warehouse          # static warehouse map (carter_warehouse_navigation)
+  robot: nova_carter
+  goal:                                  # DRAFT — map extent x[-11.975,12.03] y[-17.975,20.83];
+    x: -6.0                              #   AMCL start pose is (-6.0, -1.0, yaw=pi). This goal
+    y: 5.0                               #   is a short straight drive up the same lane. Tuned
+    yaw: 1.5708                          #   for real free space on the GPU workstation (cycle-3).
+    frame: map
+  seed: 42                               # fixed seed for determinism (REQ-EXEC-003, NFR-EXEC-001)
+  timeout_s: 120                         # DRAFT mission timeout (REQ-EXEC-007)
+
+sut:
+  image_ref: carter-sut                  # local tag from `docker build -t carter-sut robot_sw/`
+                                         # (D-1 hybrid local build; @sha256 digest added on workstation)
+
+interface:
+  type: ros2                             # REQ-EXEC-004 (adapter type; only ros2 for MVP)
+  adapter_config:                        # DRAFT topic/action wiring (R7 — confirmed cycle-3)
+    goal_interface:                      # REQ-EXEC-007
+      action_type: nav2_msgs/action/NavigateToPose
+      action_name: /navigate_to_pose
+    topic_map:                           # REQ-EXEC-006 (sim <-> SUT wiring)
+      cmd_vel: /cmd_vel                  #   SUT publishes (Twist) -> sim actuates
+      lidar_points: /front_3d_lidar/lidar_points   # sim publishes (PointCloud2) -> SUT subscribes
+      odom: /chassis/odom                #   sim publishes (Odometry) -> SUT subscribes
+      clock: /clock                      #   sim publishes -> use_sim_time:=true (REQ-EXEC-003)
+    frames:
+      map: map
+      odom: odom
+      base: base_link
+    readiness:                           # when is the SUT ready to accept a goal?
+      # DRAFT: nav2 lifecycle 'active' + /navigate_to_pose action server available.
+      action_server_available: /navigate_to_pose
+
+acceptance_criteria:                     # MVP: reach goal within timeout AND zero collision (REQ-EXEC-011)
+  - oracle: reached_goal                 # REQ-EXEC-010/012
+    goal_tolerance_m: 0.5                # DRAFT tolerance
+    goal_tolerance_yaw: 0.26             # DRAFT (~15 deg)
+  - oracle: no_collision                 # REQ-EXEC-010/011 (collision_count == 0)
