@@ -1,0 +1,87 @@
+# nova_carter_warehouse_goal_b.yaml — DoD-P3-01 variant B: same scene, different
+# goal + tolerance. The runner must accept this file with ZERO code modification.
+#
+# Consumer story: the same robot-SW project asks for a second waypoint check — a
+# mid-lane stop short of the canonical goal, with a looser position tolerance.
+#
+# Diffs vs canonical nova_carter_warehouse_goal.yaml (ONLY these two — P3-01
+# needs the minimal goal/criteria delta, nothing else; all other values are the
+# canonical measured fill, see that file for provenance):
+#   1) scenario.goal.y: 5.0 -> 3.0 — mid-point of the pass-proven lane (AMCL
+#      start (-6.0,-1.0) -> canonical goal (-6.0,5.0)); every cycle-5/6 pass run
+#      drove through this point, so it is reachable warehouse free space.
+#   2) reached_goal position_tolerance_m: 0.75 -> 1.0 — different knob value,
+#      chosen above the measured N=10 GT closest-approach max 0.709
+#      (decisions/2026-07-09-p2-close-decisions.md D-2 evidence) so the pass
+#      margin holds despite the AMCL + nav2 xy-tol error stack.
+#
+# EXPECTED = pass, exit 0 (ASSUMPTION — Wave 2 T4 GPU measures). Basis: goal sits
+# ON the pass-proven canonical drive path (cycle-5 run2/run6 + cycle-6 N=10);
+# shorter drive => time_to_goal below the canonical 8.4-10.5 s. Surfaced risk:
+# p3c2 activates both 2D lidars (FU-17 ruling (a)) — run-history verdicts were
+# measured with 2D flow 0; activation adds perception, so a verdict flip is
+# unlikely (cycle-plan risk note) but metrics may shift. T4 records the actuals.
+
+apiVersion: cv-infra/v1
+
+scenario:
+  scene: nova_carter_warehouse
+  robot: nova_carter
+  goal:
+    x: -6.0
+    y: 3.0                               # DIFF vs canonical (5.0): mid-lane waypoint on the
+                                         #   pass-proven straight drive from the AMCL start pose
+    yaw: 1.5708
+    frame: map
+  seed: 42
+  timeout_s: 120
+
+sut:
+  image_ref: carter-sut:p2
+
+interface:
+  type: ros2
+  adapter_config:                        # identical to canonical (M1 canonical keys, measured values)
+    ros_distro: jazzy
+    rmw: rmw_fastrtps_cpp
+    use_sim_time: true
+    goal_interface:
+      kind: action
+      name: /navigate_to_pose
+      type: nav2_msgs/action/NavigateToPose
+    cmd_vel:
+      topic: /cmd_vel
+      type: geometry_msgs/msg/Twist
+    clock_topic: /clock
+    odom_topics:
+      - /odom
+      - /chassis/odom
+    sensors:
+      - topic: /front_3d_lidar/lidar_points
+        type: sensor_msgs/msg/PointCloud2
+        frame: front_3d_lidar
+      - topic: /front_2d_lidar/scan
+        type: sensor_msgs/msg/LaserScan
+        frame: front_2d_lidar
+      - topic: /back_2d_lidar/scan
+        type: sensor_msgs/msg/LaserScan
+        frame: back_2d_lidar
+    frames:
+      map: map
+      odom: odom
+      base_link: base_link
+    readiness:
+      is_active_service: /lifecycle_manager_navigation/is_active
+
+acceptance_criteria:
+  - oracle: reached_goal
+    params:
+      position_tolerance_m: 1.0          # DIFF vs canonical (0.75): looser tolerance, still a
+                                         #   real check (> measured GT dispersion max 0.709)
+      yaw_tolerance_rad: 0.26            # inactive while goal_orientation_wxyz is unset (canonical)
+  - oracle: no_collision
+    params:
+      chassis_path: /World/Nova_Carter_ROS/chassis_link
+      collision_excluded_paths:
+        - /World/Nova_Carter_ROS
+        - /World/warehouse_with_forklifts/GroundPlane

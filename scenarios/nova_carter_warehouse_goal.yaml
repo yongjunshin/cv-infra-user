@@ -11,6 +11,14 @@
 # reproduced x2; intentional-FAIL and timeout legs also exercised live).
 # Earlier residual (goal free-space tuning) is CLOSED: goal/seed/timeout are unchanged
 # and pass-proven against the live sim (bringup run2/run6).
+#
+# STATUS (p3-contract-consume, T3): apiVersion added as the first top-level key
+# (D-1' strict versioning — absent key now gets a friendly reject + exit 2).
+# 2D lidar comments realigned to FU-17 ruling (a): the carter asset ships the
+# publish graphs complete; the runner enables their render products pre-play
+# (platform wiring lands in p3c2). All VALUES unchanged from the cycle-5 fill.
+
+apiVersion: cv-infra/v1
 
 scenario:
   scene: nova_carter_warehouse          # static warehouse map (carter_warehouse_navigation)
@@ -49,12 +57,15 @@ interface:
       - topic: /front_3d_lidar/lidar_points
         type: sensor_msgs/msg/PointCloud2
         frame: front_3d_lidar            # measured pointcloud_to_laserscan target_frame
-      - topic: /front_2d_lidar/scan      # local_costmap front_2d_lidar_layer (carter params)
-        type: sensor_msgs/msg/LaserScan
-        frame: front_2d_lidar            # measured OmniGraph frameId (cycle-5 bringup, FU-13-4)
-      - topic: /back_2d_lidar/scan       # local_costmap back_2d_lidar_layer (carter params)
-        type: sensor_msgs/msg/LaserScan
-        frame: back_2d_lidar             # measured OmniGraph frameId (cycle-5 bringup, FU-13-4)
+      - topic: /front_2d_lidar/scan      # local_costmap front_2d_lidar_layer (carter params);
+        type: sensor_msgs/msg/LaserScan  #   publish graph ships complete in the asset — runner
+        frame: front_2d_lidar            #   enables its render product pre-play (FU-17 ruling (a),
+                                         #   p3c1 probe: 329/349 msgs; wiring = platform, p3c2).
+                                         #   frame = measured OmniGraph frameId (cycle-5, FU-13-4)
+      - topic: /back_2d_lidar/scan       # local_costmap back_2d_lidar_layer (carter params);
+        type: sensor_msgs/msg/LaserScan  #   same as front: graph complete, runner enables render
+        frame: back_2d_lidar             #   product pre-play (FU-17 (a), p3c2 wiring).
+                                         #   frame = measured OmniGraph frameId (cycle-5, FU-13-4)
     frames:
       map: map
       odom: odom

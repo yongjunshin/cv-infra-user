@@ -1,0 +1,92 @@
+# nova_carter_warehouse_obstacle_fail.yaml — fail-expected variant (P2-04
+# regression leg): inject a low box into the lane via the D-2' contract slot
+# scenario.debug_obstacle (an obstacle is WORLD STATE, not a criterion — the
+# P2-era free-form criteria-params slot is retired; putting debug_obstacle
+# under acceptance_criteria now loud-rejects).
+#
+# Diff vs canonical nova_carter_warehouse_goal.yaml (ONLY this — criteria and
+# every other value stay canonical, see that file for provenance):
+#   scenario.debug_obstacle — measured P2-04 run7 "drive-by graze" spec: a
+#   half-lane low box (0.15 m) that the blackbox nav's ACTIVE perception stack
+#   (3D lidar -> laserscan + static map) did not capture (cycle-6 corrected
+#   narrative — 2D lidars had zero flow then, height was not the cause), so the
+#   chassis grazes it while the goal stays reachable => a PURE verdict=fail
+#   (no_collision violated, reached_goal still passing — not a timeout).
+#
+# EXPECTED = fail, exit 1 (ASSUMPTION — Wave 2 T4 GPU measures). Basis: run7
+# evidence with these exact obstacle values and canonical criteria —
+# collision_count 3603, time_to_goal 66.7 s, path 7.64 m (workstation
+# ~/cv-infra-p2-out/p2c5/{variants/p2c5_fail2.yaml, run7/*/result/result.json};
+# WORKLOG cycle-5). Surfaced risk: run7 ran with 2D lidar flow 0; p3c2 activates
+# both 2D lidars (FU-17 ruling (a)). If the 0.15 m box top crosses the active 2D
+# scan plane, nav may now see and avoid it and the fail-expectation flips — T4
+# must confirm; a flip would mean scenario retune (obstacle height), not a
+# platform bug.
+
+apiVersion: cv-infra/v1
+
+scenario:
+  scene: nova_carter_warehouse
+  robot: nova_carter
+  goal:
+    x: -6.0
+    y: 5.0
+    yaw: 1.5708
+    frame: map
+  seed: 42
+  timeout_s: 120
+  debug_obstacle:                        # D-2' slot (world state) — P2-04 run7 measured spec,
+    x: -6.35                             #   half-lane graze: chassis contact + goal reachable
+    y: 2.0
+    height: 0.15
+    width: 0.5
+    depth: 0.6
+
+sut:
+  image_ref: carter-sut:p2
+
+interface:
+  type: ros2
+  adapter_config:                        # identical to canonical (M1 canonical keys, measured values)
+    ros_distro: jazzy
+    rmw: rmw_fastrtps_cpp
+    use_sim_time: true
+    goal_interface:
+      kind: action
+      name: /navigate_to_pose
+      type: nav2_msgs/action/NavigateToPose
+    cmd_vel:
+      topic: /cmd_vel
+      type: geometry_msgs/msg/Twist
+    clock_topic: /clock
+    odom_topics:
+      - /odom
+      - /chassis/odom
+    sensors:
+      - topic: /front_3d_lidar/lidar_points
+        type: sensor_msgs/msg/PointCloud2
+        frame: front_3d_lidar
+      - topic: /front_2d_lidar/scan
+        type: sensor_msgs/msg/LaserScan
+        frame: front_2d_lidar
+      - topic: /back_2d_lidar/scan
+        type: sensor_msgs/msg/LaserScan
+        frame: back_2d_lidar
+    frames:
+      map: map
+      odom: odom
+      base_link: base_link
+    readiness:
+      is_active_service: /lifecycle_manager_navigation/is_active
+
+acceptance_criteria:                     # identical to canonical — the ONLY delta is the obstacle
+  - oracle: reached_goal
+    params:
+      position_tolerance_m: 0.75
+      yaw_tolerance_rad: 0.26
+  - oracle: no_collision
+    params:
+      chassis_path: /World/Nova_Carter_ROS/chassis_link
+      collision_excluded_paths:
+        - /World/Nova_Carter_ROS
+        - /World/warehouse_with_forklifts/GroundPlane
