@@ -1,0 +1,92 @@
+# nova_carter_warehouse_custom_oracle.yaml — P3-04 custom-oracle example: the
+# canonical mission + one scenario-adjacent custom oracle (D-1 (a), 2026-07-11).
+#
+# Consumer story: the robot-SW project wants a check the MVP oracles don't ship —
+# "reaching the goal is not enough, reach it FAST": an upper bound on
+# time-to-goal, tighter than the 120 s mission budget. The oracle module lives
+# NEXT TO this file (scenarios/max_time_to_goal.py) and is referenced below as
+# oracle: "max_time_to_goal:MaxTimeToGoalOracle" — no install, no derived image,
+# runner image untouched (the platform sys.path's this directory at admit and
+# ro-mounts it into the runner at the same absolute path). See README
+# "커스텀 oracle" for the rules (module-scope Isaac imports are FORBIDDEN).
+#
+# Diffs vs canonical nova_carter_warehouse_goal.yaml (ONLY this — every other
+# value is the canonical measured fill; see that file for provenance):
+#   +) third acceptance criterion: custom max_time_to_goal, bound 30.0 s.
+#      Anchor (G-24): measured canonical-drive time_to_goal = 8.4~10.5 s
+#      (WORKLOG p2c5 pass runs run2/run6/QA; evidence ~/cv-infra-p2-out/p2c5/),
+#      N=10 determinism spread 1.017 s (p2c6, ~/cv-infra-p2-out/p2c6/determinism),
+#      variant goal_b 5.37 s + N=3 ttg range 0.50 s (p3c2, ~/cv-infra-p2-out/p3c2/).
+#      30.0 s ~= 2.9x the measured max 10.5 s (margin for session-first warm-use
+#      outliers + FU-17 2D-lidar-active metric shift) while 4x tighter than
+#      timeout_s 120 — the criterion still binds (a hypothetical slow crawl that
+#      beats the mission budget would FAIL here while passing reached_goal).
+#
+# EXPECTED = pass, exit 0 (ASSUMPTION — the T-GPU leg measures; this file is the
+# P3-04 E2E input). The custom criterion shares the merged criteria view, so
+# goal-reach uses the reached_goal position_tolerance_m (0.75) below.
+
+apiVersion: cv-infra/v1
+
+scenario:
+  scene: nova_carter_warehouse
+  robot: nova_carter
+  goal:                                  # identical to canonical (pass-proven, cycle-5 run2/run6)
+    x: -6.0
+    y: 5.0
+    yaw: 1.5708
+    frame: map
+  seed: 42
+  timeout_s: 120
+
+sut:
+  image_ref: carter-sut:p2
+
+interface:
+  type: ros2
+  adapter_config:                        # identical to canonical (M1 canonical keys, measured values)
+    ros_distro: jazzy
+    rmw: rmw_fastrtps_cpp
+    use_sim_time: true
+    goal_interface:
+      kind: action
+      name: /navigate_to_pose
+      type: nav2_msgs/action/NavigateToPose
+    cmd_vel:
+      topic: /cmd_vel
+      type: geometry_msgs/msg/Twist
+    clock_topic: /clock
+    odom_topics:
+      - /odom
+      - /chassis/odom
+    sensors:
+      - topic: /front_3d_lidar/lidar_points
+        type: sensor_msgs/msg/PointCloud2
+        frame: front_3d_lidar
+      - topic: /front_2d_lidar/scan
+        type: sensor_msgs/msg/LaserScan
+        frame: front_2d_lidar
+      - topic: /back_2d_lidar/scan
+        type: sensor_msgs/msg/LaserScan
+        frame: back_2d_lidar
+    frames:
+      map: map
+      odom: odom
+      base_link: base_link
+    readiness:
+      is_active_service: /lifecycle_manager_navigation/is_active
+
+acceptance_criteria:
+  - oracle: reached_goal                 # identical to canonical
+    params:
+      position_tolerance_m: 0.75
+      yaw_tolerance_rad: 0.26
+  - oracle: no_collision                 # identical to canonical
+    params:
+      chassis_path: /World/Nova_Carter_ROS/chassis_link
+      collision_excluded_paths:
+        - /World/Nova_Carter_ROS
+        - /World/warehouse_with_forklifts/GroundPlane
+  - oracle: "max_time_to_goal:MaxTimeToGoalOracle"   # ADDED: scenario-adjacent plugin (module:Class)
+    params:
+      max_time_to_goal_s: 30.0           # bound anchor: see header (measured ttg max 10.5 s x ~2.9)
