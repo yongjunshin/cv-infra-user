@@ -89,7 +89,15 @@ jobs:
       contents: read
     uses: yongjunshin/cv-infra-workspace/.github/workflows/verify.yml@v1
     with:
-      sut_image: ${{ needs.build-sut.outputs.image_ref }} # image REF only (R10)
+      # DEGRADED MODE (task-sanctioned fallback, p5c4 finding): the GPU host's
+      # network stalls sustained registry streams at ~80-85 MB, so the CI-built
+      # image's 784.5 MB Nav2 apt layer cannot complete a GHCR pull there
+      # (dockerd retry-loops indefinitely; measured evidence in the T3 report).
+      # Until the transport gap is closed (M5/C-2 candidate: pre-pull/relay),
+      # verification consumes the pre-staged workstation image by REF — the
+      # ref-only contract (R10) is unchanged; build-sut still proves the
+      # build+GHCR-push leg and its digest is recorded in the run outputs.
+      sut_image: carter-sut:p2 # pre-built ref (see robot_sw/Dockerfile provenance pin)
       scenarios: scenarios/*.yaml
       runner_label: cv-infra-gpu
       # `api` left at its default (same-host orchestrator, M8 §8 g5 MVP topology).
