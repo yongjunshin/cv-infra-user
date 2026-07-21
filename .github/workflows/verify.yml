@@ -100,8 +100,5 @@ jobs:
       sut_image: carter-sut:p2 # pre-built ref (see robot_sw/Dockerfile provenance pin)
       scenarios: scenarios/*.yaml
       runner_label: cv-infra-gpu
-      # W5 EULA-negative (temporary, reverted next push): point at the
-      # consent-ABSENT orchestrator to observe the D-10 gate in CI —
-      # runner boot must be BLOCKED, exit 3, Check neutral (M8-D10).
-      api: "http://127.0.0.1:8001"
+      # `api` left at its default (same-host orchestrator, M8 §8 g5 MVP topology).
       # `timeout_s` left at its default (3600).
