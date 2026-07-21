@@ -34,7 +34,7 @@ scenario:
     yaw: 1.5708
     frame: map
   seed: 42
-  timeout_s: 120
+  timeout_s: two-minutes
 
 sut:
   image_ref: carter-sut:p2
