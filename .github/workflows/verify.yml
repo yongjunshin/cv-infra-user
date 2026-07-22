@@ -1,38 +1,108 @@
-# .github/workflows/verify.yml — consumer E2E verification workflow.
+# Consumer verify.yml — the cv-infra-user INSTANCE of the platform-owned template
+# (source of truth: cv-infra-workspace/.github/workflows/verify.yml header, D-H —
+# consumed here as contract + release ref ONLY, no relative-path source reference).
 #
-# STATUS: Phase 0 PLACEHOLDER. Valid YAML, but the real verification is NOT wired
-# yet. It is wired in Phase 5 (CLI-first, Action-after — LOCKED #10): this consumer
-# workflow will call the platform's reusable workflow (`workflow_call`) by released
-# version `@vN` only — never by relative source path (boundary rule #2; `uses:`
-# structurally enforces this). Marketplace + platform action versions are pinned
-# to released versions (no floating branch refs).
+# Consumer story (CV-User charter §1): a robot-SW project pushes a PR; CI builds
+# its robot image (SUT), hands cv-infra an image REF + scenario declarations, and
+# gets back a Check + sticky comment + artifacts on the PR (DoD-P5-01/02).
 #
-# --- Phase 5 target shape (kept commented until wired) ---------------------------
-# on:
-#   pull_request:            # push -> PR -> Check + sticky comment + artifacts (DoD-P5)
+# SECURITY (D-J / R10): plain `pull_request` trigger ONLY — never its privileged
+# base-context variant. The SUT reaches the GPU box as an image REF only; the GPU
+# job never checks out PR-head source (scenario YAMLs travel as an artifact).
 #
-# jobs:
-#   build-sut:               # fork-PR GPU security boundary (R10): build on ubuntu, not GPU host
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
-#       - uses: docker/login-action@v3          # ghcr.io
-#       - uses: docker/build-push-action@v6      # build robot_sw/Dockerfile -> GHCR (ref-only consume)
-#
-#   verify:                  # GPU verification via self-hosted runner
-#     needs: build-sut
-#     uses: <ORG>/<PLATFORM_REPO>/.github/workflows/verify.yml@vN   # reusable workflow_call, pinned @vN
-#     # secrets/inputs: scenarios/, SUT image ref, GITHUB_TOKEN (Check + comment + upload-artifact@v4)
-# ---------------------------------------------------------------------------------
+# PINS (§2-7): every marketplace `uses:` is an immutable commit SHA (trailing
+# comment = semver tag), fetched from the GitHub API at authoring time
+# (evidence: e2e-p5c4/preflight-r/*.json). The platform is consumed via its
+# release tag `@v1` (M8 §3.6 3-axis versioning: the Action tag axis is a moving
+# major tag by design — the one sanctioned non-SHA ref).
 
-name: "verify (cv-infra E2E) — PLACEHOLDER (wired in P5)"
+name: cv-infra-verify
 
 on:
-  workflow_dispatch: {}     # P5: replace with `pull_request:` to trigger real verification
+  pull_request: # plain pull_request only (D-J) — never the privileged base-context variant
 
 jobs:
-  scaffold-placeholder:
-    name: scaffold placeholder (no-op until P5)
+  # ── Job 1: build the carter SUT image (GitHub-hosted, GPU-free) ──────────────
+  # SUT build is OUTSIDE the cv-infra boundary (REQ-EXEC-004: the platform takes
+  # a pre-built image ref). GHCR push uses the workflow GITHUB_TOKEN (M8 §2).
+  build-sut:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # GHCR push via GITHUB_TOKEN — no PAT
+    outputs:
+      # Digest-pinned ref (immutable) — the only thing cv-infra receives (R10).
+      image_ref: ghcr.io/${{ github.repository }}/carter-sut@${{ steps.build.outputs.digest }}
     steps:
-      - run: echo "cv-infra-user verify.yml is a Phase 0 scaffold placeholder. Real verification (reusable workflow_call @vN + 2-job build-sut/verify) is wired in Phase 5."
+      - name: Check out PR head (consumer repo — never reaches the GPU box)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Log in to GHCR
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push carter SUT image
+        id: build
+        uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # v6.9.0
+        with:
+          context: robot_sw
+          push: true
+          tags: ghcr.io/${{ github.repository }}/carter-sut:pr-${{ github.event.pull_request.number }}
+
+      # Stage the scenario declarations for the GPU job. Staged under a single
+      # root so the artifact PRESERVES the `scenarios/` prefix (upload-artifact
+      # roots the artifact at the least common ancestor of its paths): the
+      # reusable workflow downloads this into its CWD, where the default glob
+      # `scenarios/*.yaml` must match AND exit-2 annotation `file=` paths must
+      # equal the PR-diff-relative paths (D-L consumer-repo-root relative).
+      #
+      # Curated pass set for CI (walking-skeleton minimal): the two pass-proven
+      # nav-goal scenarios. `nova_carter_warehouse_obstacle_fail.yaml` is the
+      # intentional-FAIL fixture (DoD-P2-04, standalone use) and would turn every
+      # PR red by design; the custom-oracle pair stays a local/standalone example
+      # (D-1(a)). Both remain in `scenarios/` for those paths.
+      - name: Stage verification inputs
+        run: |
+          mkdir -p ci-inputs/scenarios
+          cp scenarios/nova_carter_warehouse_goal.yaml ci-inputs/scenarios/
+          cp scenarios/nova_carter_warehouse_goal_b.yaml ci-inputs/scenarios/
+
+      - name: Upload verification inputs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cv-infra-verification-inputs # reusable input `scenarios_artifact` default
+          path: ci-inputs/
+
+  # ── Job 2: verify on the GPU workstation (platform-owned reusable workflow) ──
+  # Job-level `uses:` (D-H): this job carries NO runs-on/steps — the platform's
+  # verify.yml IS the job definition (runner selection via its `runner_label`
+  # input). Everything below the `uses:` line is the whole integration surface
+  # a consumer maintains (REQ-INTAKE-003).
+  verify:
+    needs: build-sut
+    permissions:
+      checks: write # Check Run posting
+      pull-requests: write # sticky comment upsert
+      contents: read
+    uses: yongjunshin/cv-infra-workspace/.github/workflows/verify.yml@v1
+    with:
+      # DEGRADED MODE (task-sanctioned fallback). Cause, per the p5c6 transport
+      # diagnosis (supersedes the earlier "~80-85 MB stall point" reading, which
+      # had no anchored evidence): this site's GHCR blobs are served
+      # ICN edge -> IAD shield -> Azure Blob origin, and our SUT blob is never
+      # resident in the IAD shield, so every pull is a trans-Pacific origin fetch
+      # whose throughput is unstable (0.06-11 MB/s, collapsing to ~0.1 MB/s for
+      # minutes). It is a PATH-QUALITY problem, not a byte threshold — a 784.5 MB
+      # layer simply may or may not finish. Until the transport gap is closed
+      # (M5/C-2: pre-staging is the structurally correct answer here, not a
+      # workaround), verification consumes the pre-staged workstation image by
+      # REF — the ref-only contract (R10) is unchanged; build-sut still proves the
+      # build+GHCR-push leg and its digest is recorded in the run outputs.
+      sut_image: carter-sut:p2 # pre-built ref (see robot_sw/Dockerfile provenance pin)
+      scenarios: scenarios/*.yaml
+      runner_label: cv-infra-gpu
+      # `api` left at its default (same-host orchestrator, M8 §8 g5 MVP topology).
+      # `timeout_s` left at its default (3600).
