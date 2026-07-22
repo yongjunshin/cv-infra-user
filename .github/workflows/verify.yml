@@ -89,13 +89,17 @@ jobs:
       contents: read
     uses: yongjunshin/cv-infra-workspace/.github/workflows/verify.yml@v1
     with:
-      # DEGRADED MODE (task-sanctioned fallback, p5c4 finding): the GPU host's
-      # network stalls sustained registry streams at ~80-85 MB, so the CI-built
-      # image's 784.5 MB Nav2 apt layer cannot complete a GHCR pull there
-      # (dockerd retry-loops indefinitely; measured evidence in the T3 report).
-      # Until the transport gap is closed (M5/C-2 candidate: pre-pull/relay),
-      # verification consumes the pre-staged workstation image by REF — the
-      # ref-only contract (R10) is unchanged; build-sut still proves the
+      # DEGRADED MODE (task-sanctioned fallback). Cause, per the p5c6 transport
+      # diagnosis (supersedes the earlier "~80-85 MB stall point" reading, which
+      # had no anchored evidence): this site's GHCR blobs are served
+      # ICN edge -> IAD shield -> Azure Blob origin, and our SUT blob is never
+      # resident in the IAD shield, so every pull is a trans-Pacific origin fetch
+      # whose throughput is unstable (0.06-11 MB/s, collapsing to ~0.1 MB/s for
+      # minutes). It is a PATH-QUALITY problem, not a byte threshold — a 784.5 MB
+      # layer simply may or may not finish. Until the transport gap is closed
+      # (M5/C-2: pre-staging is the structurally correct answer here, not a
+      # workaround), verification consumes the pre-staged workstation image by
+      # REF — the ref-only contract (R10) is unchanged; build-sut still proves the
       # build+GHCR-push leg and its digest is recorded in the run outputs.
       sut_image: carter-sut:p2 # pre-built ref (see robot_sw/Dockerfile provenance pin)
       scenarios: scenarios/*.yaml
