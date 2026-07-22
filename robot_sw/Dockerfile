@@ -35,14 +35,51 @@ ARG NAV2_BRINGUP_VERSION=1.3.12-1noble.20260616.082701
 ARG PC2LS_VERSION=2.0.2-3noble.20260615.151828
 
 # --- P2: assemble reusable navigation assets (do-not-reinvent — assemble, don't build) ---
-#   - Nav2 (ros-jazzy-navigation2 metapackage + ros-jazzy-nav2-bringup launch/params)
+#   - Nav2 (ros-jazzy-navigation2 metapackage: runtime nav2 servers/BT/costmap/lifecycle)
 #   - pointcloud_to_laserscan (3D lidar PointCloud2 -> 2D LaserScan for Nav2 costmaps)
+#   - nav2_bringup LAUNCH FILES ONLY (bringup/navigation/localization composition, reused)
 #   --no-install-recommends avoids unpinned floating Recommends (GOTCHAS G-11).
 #   Transitive nav2 component Depends resolve from the same repo snapshot at build time.
+#
+# SLIM + SPLIT (T3 p5c5, decision 2026-07-22-p5-transport-approach B-A): the former SINGLE
+# `apt-get install navigation2 nav2-bringup pointcloud-to-laserscan` produced one 2.79GB
+# uncompressed layer -> ~784.5MB compressed GHCR blob that could not be pulled (infinite
+# stall ~85MB on the target network; a single blob has no intra-layer resume). Root cause
+# MEASURED on the workstation: `ros-jazzy-nav2-bringup` HARD-Depends the full Gazebo demo
+# sim (nav2-minimal-tb3/tb4-sim, ros-gz-sim/bridge, slam-toolbox -> gz-*-vendor/ogre/
+# dartsim/qt5-quick/sdformat/ruby/poco ... = 313-pkg delta, ~0.72GB NET dropped) which a
+# HEADLESS SUT driven by EXTERNAL Isaac Sim never launches. (rviz2/mesa/llvm/vtk are NOT
+# dropped here — also held by navigation2's rviz-plugins/PCL; see README residual ceiling.)
+# Two levers, both applied below:
+#   (1) SLIM  — drop the Gazebo closure: install nav2_bringup's 2.2MB launch package
+#               WITHOUT its sim Depends (`dpkg --force-depends`; those tb3/tb4/gz/slam
+#               launch paths are unused — default bringup path is slam:=False + external
+#               /clock). Everything our headless launch runs is in `navigation2`.
+#   (2) SPLIT — 3 pinned RUN layers (each an independently pull/resume-able blob) instead
+#               of one fat blob; NO new per-subpackage pins (keeps §2-7 reproducibility).
+# Per-layer sizing guide + degraded-mode fallback: robot_sw/README.md.
+
+# Layer 1/3: pointcloud_to_laserscan (+ its PCL closure).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ros-jazzy-pointcloud-to-laserscan="${PC2LS_VERSION}" \
+    && rm -rf /var/lib/apt/lists/*
+
+# Layer 2/3: runtime Nav2 stack (navigation2 metapackage). navigation2's Depends carry
+#   NO Gazebo (MEASURED) — pure runtime: bt_navigator/controller/planner/smoother/
+#   behaviors/collision-monitor/costmap-2d/map-server/amcl/lifecycle-manager/docking.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ros-jazzy-navigation2="${NAVIGATION2_VERSION}" \
-      ros-jazzy-nav2-bringup="${NAV2_BRINGUP_VERSION}" \
-      ros-jazzy-pointcloud-to-laserscan="${PC2LS_VERSION}" \
+    && rm -rf /var/lib/apt/lists/*
+
+# Layer 3/3: nav2_bringup LAUNCH package only (bringup/navigation/localization launch +
+#   default params/BT XML that our headless launch composes — do-not-reinvent). Installed
+#   WITHOUT its Gazebo/sim hard-Depends (the tb3/tb4 gz demos + slam_toolbox), which the
+#   external-Isaac-Sim headless SUT never launches. The unmet-dep marks are cosmetic for a
+#   frozen leaf image; every node bringup_launch.py actually starts lives in `navigation2`.
+RUN apt-get update \
+    && apt-get download ros-jazzy-nav2-bringup="${NAV2_BRINGUP_VERSION}" \
+    && dpkg --install --force-depends ./ros-jazzy-nav2-bringup_*.deb \
+    && rm -f ./ros-jazzy-nav2-bringup_*.deb \
     && rm -rf /var/lib/apt/lists/*
 
 # --- P2: assemble carter_navigation (Nova Carter Nav config + static warehouse map) ---

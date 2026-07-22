@@ -60,6 +60,62 @@ docker run --rm --entrypoint bash carter-sut -lc \
 The image's default `CMD` brings up the headless Nav2 stack:
 `ros2 launch /opt/robot_sw/launch/carter_navigation_headless.launch.py use_sim_time:=true rviz:=false`.
 
+## Pull-friendliness — per-layer size guide + degraded-mode fallback
+
+The SUT image is pushed to GHCR and pulled onto the GPU runner during E2E. A **single fat
+layer** is the enemy: a large blob has no intra-layer resume, so a flaky/slow network stalls
+mid-blob and the whole pull hangs (measured p5c4: the former single Nav2 install layer =
+2.79 GB uncompressed -> **~734 MiB gzip blob**, stalled ~85 MB on the target network with no
+recovery). Decision `2026-07-22-p5-transport-approach` (B-A) — mitigate at the image, keep
+each layer an independently pull/resume-able blob.
+
+### Rule: never install into one fat layer
+
+Split a big `apt-get install` into **pinned RUN layers** (each a separate, resumable blob) and
+**drop headless-unneeded closures** where the packaging allows. Applied to this Dockerfile
+(measured on the workstation, `docker history` before/after — see
+`reports/user-2026-07-22-sut-slim-mcap.md`):
+
+| | before (single layer) | after (slim + split) |
+|---|---|---|
+| Nav2 install layers | 1 | 3 (pc2ls · navigation2 · nav2_bringup) |
+| max layer (uncompressed) | 2.79 GB | 2.07 GB (navigation2) |
+| max layer (gzip pull blob) | **734 MiB** | **543 MiB** |
+| other layers | — | 5.4 MB (pc2ls) + 4.1 MB (nav2_bringup), independent blobs |
+| total image | 3.68 GB | **2.97 GB** |
+
+- **Slim lever applied**: `ros-jazzy-nav2-bringup` HARD-Depends the full Gazebo demo sim
+  (`nav2-minimal-tb3/tb4-sim`, `ros-gz-sim/bridge`, `slam-toolbox` -> `gz-*-vendor`/ogre/
+  dartsim/qt5-quick/… = 313 pkgs, ~0.72 GB) that a **headless SUT driven by external Isaac
+  Sim never launches**. We install its 2.2 MB launch package WITHOUT those sim Depends
+  (`dpkg --install --force-depends`) — every node our launch actually starts lives in
+  `navigation2`. The unmet-dep marks are cosmetic for a frozen leaf image (verified: launch
+  still composes, all Nav2 executables present).
+- **Residual ceiling (known)**: the remaining 543 MiB `navigation2` blob is still dominated by
+  `nav2-rviz-plugins` -> rviz2/OGRE/mesa/**libllvm** (~0.38 GB) and PCL `libpcl-dev` ->
+  boost-dev/VTK/opencv-dev (~0.5 GB), both **held by upstream metapackage/PCL hard-Depends**.
+  Shedding them cleanly is blocked (removing a metapackage's hard-Dep breaks the metapackage;
+  `apt autoremove` then refuses). Forcing it (stacked `dpkg --force-depends` + `apt-mark`
+  surgery against ROS/PCL packaging) is over-engineering with runtime-breakage risk, so it is
+  **not done** — the slim is a *partial* mitigation, not a full close of the pull wall.
+
+### Degraded-mode fallback (MVP-normative on the target network)
+
+Because slim alone does not drop the max blob under the stall threshold, the **normal MVP path**
+is to **pre-stage the SUT image on the runner and reference it directly**, so `verify` skips the
+GHCR pull entirely (validated green x4 in p5c4):
+
+```bash
+# on the self-hosted GPU runner: pre-stage once (any channel that completes),
+# then scenarios reference the local ref — no CI-time GHCR pull:
+docker pull ghcr.io/<ORG>/cv-infra-user/carter-sut@sha256:<digest>   # or load from a saved tar
+docker tag  <that image>  carter-sut:p2      # local pre-staged ref used by scenarios
+```
+
+Revert to the full CI-build digest (pull-through) only once slim/split is proven end-to-end on
+the target network (decision B-A carry-forward, p5c6+). Until then, degraded-mode is the
+documented, supported deploy path (see also the redeploy manual, DoD-P5-08).
+
 ## What we do NOT do
 
 - No cv-infra-specific hooks are injected into the SUT — it stays a blackbox (REQ-EXEC-005).
