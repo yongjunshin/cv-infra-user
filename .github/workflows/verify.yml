@@ -101,7 +101,13 @@ jobs:
       # workaround), verification consumes the pre-staged workstation image by
       # REF — the ref-only contract (R10) is unchanged; build-sut still proves the
       # build+GHCR-push leg and its digest is recorded in the run outputs.
-      sut_image: carter-sut:p2 # pre-built ref (see robot_sw/Dockerfile provenance pin)
+      # p5c8 T2 (TEMPORARY, reverted next push): an intentionally REGRESSED SUT
+      # version — carter-sut:p2 with the DWB planner's max_vel_x clamped to
+      # 0.02 m/s, so the same request now misses its 120 s sim-time budget. The
+      # SUT is the only axis excluded from `request_identity_key`, so the
+      # baseline still matches and the verdict flips pass->fail: this is what
+      # makes the PR render `regression status: regressed` (REQ-REPORT-003).
+      sut_image: carter-sut:p5c8-fail # pre-built ref (see robot_sw/Dockerfile provenance pin)
       scenarios: scenarios/*.yaml
       runner_label: cv-infra-gpu
       # `api` left at its default (same-host orchestrator, M8 §8 g5 MVP topology).
