@@ -12,9 +12,11 @@
 #
 # PINS (§2-7): every marketplace `uses:` is an immutable commit SHA (trailing
 # comment = semver tag), fetched from the GitHub API at authoring time
-# (evidence: e2e-p5c4/preflight-r/*.json). The platform is consumed via its
-# release tag `@v1` (M8 §3.6 3-axis versioning: the Action tag axis is a moving
-# major tag by design — the one sanctioned non-SHA ref).
+# (evidence: e2e-p5c4/preflight-r/*.json; the p5c9 buildx/build-push pins are
+# resolved+recorded in ~/cv-infra-p2-out/p5c9/live/01-action-pins.txt on the GPU
+# host). The platform is consumed via its release tag `@v1` (M8 §3.6 3-axis
+# versioning: the Action tag axis is a moving major tag by design — the one
+# sanctioned non-SHA ref).
 
 name: cv-infra-verify
 
@@ -37,6 +39,12 @@ jobs:
       - name: Check out PR head (consumer repo — never reaches the GPU box)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
+      # Buildx with the `docker-container` driver. REQUIRED by the cache wiring
+      # below: the default `docker` driver supports no cache exporter but `inline`,
+      # so `cache-to: type=gha` cannot run without this step.
+      - name: Set up Buildx (docker-container driver — prerequisite for cache export)
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
       - name: Log in to GHCR
         uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
         with:
@@ -44,13 +52,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Build cache (p5c8 §7 diagnosis): this build had NO cache backend wired, so
+      # every push re-ran the heavy apt/nav2 layer and produced a NEW digest for all
+      # 8 non-base layers — 582,116,064 compressed bytes re-pushed per PR update
+      # (evidence: ~/cv-infra-p2-out/p5c8/cache/01-manifest-diff.txt on the GPU host).
+      # The base image layers were never the problem (they are `Already exists`).
+      # `type=gha` = the GitHub Actions cache backend (10 GB/repo); `mode=max` also
+      # caches intermediate stages, which is what makes the apt layer reusable.
+      # `ignore-error=true`: a cache-export outage must not fail an already-pushed
+      # image and starve the GPU verification job of its input (the export error is
+      # still printed, and a silently missing cache shows up as `CACHED` = 0).
       - name: Build and push carter SUT image
         id: build
-        uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # v6.9.0
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: robot_sw
           push: true
           tags: ghcr.io/${{ github.repository }}/carter-sut:pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max,ignore-error=true
 
       # Stage the scenario declarations for the GPU job. Staged under a single
       # root so the artifact PRESERVES the `scenarios/` prefix (upload-artifact

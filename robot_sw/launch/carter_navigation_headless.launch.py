@@ -19,7 +19,7 @@
 # are carter's upstream defaults. The REAL topics Isaac Sim publishes are confirmed on
 # the GPU workstation in a later Phase-2 cycle; do not treat these as final.
 #
-# cache-probe 2/2 (p5c8 ③): this comment is the deliberate 1-line touch that
+# cache-probe p5c9-1/2 (T4): this comment is the deliberate 1-line touch that
 # invalidates ONLY the `COPY launch/` layer and below — the heavy apt/nav2 and
 # carter_ws layers underneath are byte-identical, so the build-sut job's layer
 # reuse (or lack of it) is measurable against the previous push. Behaviour: none.
