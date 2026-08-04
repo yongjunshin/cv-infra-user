@@ -109,19 +109,23 @@ jobs:
       contents: read
     uses: yongjunshin/cv-infra-workspace/.github/workflows/verify.yml@v1
     with:
-      # DEGRADED MODE (task-sanctioned fallback). Cause, per the p5c6 transport
-      # diagnosis (supersedes the earlier "~80-85 MB stall point" reading, which
-      # had no anchored evidence): this site's GHCR blobs are served
-      # ICN edge -> IAD shield -> Azure Blob origin, and our SUT blob is never
-      # resident in the IAD shield, so every pull is a trans-Pacific origin fetch
-      # whose throughput is unstable (0.06-11 MB/s, collapsing to ~0.1 MB/s for
-      # minutes). It is a PATH-QUALITY problem, not a byte threshold — a 784.5 MB
-      # layer simply may or may not finish. Until the transport gap is closed
-      # (M5/C-2: pre-staging is the structurally correct answer here, not a
-      # workaround), verification consumes the pre-staged workstation image by
-      # REF — the ref-only contract (R10) is unchanged; build-sut still proves the
-      # build+GHCR-push leg and its digest is recorded in the run outputs.
-      sut_image: carter-sut:p2 # pre-built ref (see robot_sw/Dockerfile provenance pin)
+      # DEGRADED-MODE EXIT ATTEMPT (p5c9 D-3, timeboxed). Until now this consumed
+      # the workstation's pre-staged `carter-sut:p2` because the p5c6 transport
+      # diagnosis found GHCR blobs served ICN edge -> IAD shield -> Azure Blob
+      # origin with our SUT blob never resident in the shield, so every pull was a
+      # trans-Pacific origin fetch at an unstable 0.06-11 MB/s. That fallback kept
+      # the ref-only contract (R10) intact but left ONE thing unproven: the image
+      # the consumer actually BUILT was never the image cv-infra verified.
+      #
+      # Two measurements now say the attempt is worth its budget:
+      #   1. the transport recovered — p5c8 pulled 582 MB of fresh GHCR blobs to
+      #      this host twice, in 400 s and 120 s (~1.8 and ~5.4 MB/s; rx counters
+      #      in ~/cv-infra-p2-out/p5c8/cache/0{2,4,5,7}-rx-*.txt);
+      #   2. with the cache wired above, consecutive PR updates now share layers,
+      #      so only the FIRST pull pays the 611,855,749 B; after that a push costs
+      #      3,252 B on the wire (~/cv-infra-p2-out/p5c9/live/12-transfer-diff.txt).
+      # Rollback if a pull stalls: put `carter-sut:p2` back on this line.
+      sut_image: ${{ needs.build-sut.outputs.image_ref }} # ghcr.io/<repo>/carter-sut@sha256:… (R10 ref-only)
       scenarios: scenarios/*.yaml
       runner_label: cv-infra-gpu
       # `api` left at its default (same-host orchestrator, M8 §8 g5 MVP topology).
