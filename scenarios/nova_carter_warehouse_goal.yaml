@@ -32,9 +32,18 @@ scenario:
   timeout_s: 120                         # mission timeout (REQ-EXEC-007) — value unchanged from draft
 
 sut:
-  image_ref: carter-sut:p2               # first workstation build (D-1 hybrid local build, FU-10 pin #2):
-                                         #   Image Id sha256:47aff5c993dac05b1664482e44af9401073336f142cb6d4919d81b47f8f9d48a
-                                         #   (local tag => no RepoDigest; the Image Id IS the pin)
+  # ★ p5c19: registry DIGEST ref — immutable, and the only carter SUT that exists today.
+  # The former `carter-sut:p2` was a LOCAL workstation tag with no RepoDigest, and the
+  # production cutover DELETED it (CEO decision D-3, 2026-08-20). It cannot be re-fetched,
+  # so that value now fails on every host — this is a repair, not a re-pin.
+  # Provenance: this digest is what THIS repo published from robot_sw/ — Actions run
+  # 32335188559 (branch p5c19-e2e-cutover-proof @ b719dd5) pushed it as the `:pr-2` tag.
+  # Anonymously pullable: a token-less GHCR manifest request for this digest returned
+  # HTTP 200 on 2026-08-20 (the package is public).
+  # ⚠ IN CI THIS VALUE IS NEVER READ — the workflow injects the image the PR just built
+  # (priority: `--sut-image` flag > $CV_INFRA_SUT_IMAGE env > this value). It is the
+  # STANDALONE default, so it must name an image that actually exists.
+  image_ref: ghcr.io/yongjunshin/cv-infra-user/carter-sut@sha256:dc14a93cafca495419a92aee8c09070d29d38cfc62825919e192eb60390483b0
 
 interface:
   type: ros2                             # REQ-EXEC-004 (adapter type; only ros2 for MVP)

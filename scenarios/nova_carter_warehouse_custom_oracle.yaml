@@ -40,7 +40,10 @@ scenario:
   timeout_s: 120
 
 sut:
-  image_ref: carter-sut:p2
+  # identical to canonical — see nova_carter_warehouse_goal.yaml for this digest's
+  # provenance. CI always overrides it; it is the standalone default. The former
+  # `carter-sut:p2` was deleted in the p5c19 production cutover (not re-fetchable).
+  image_ref: ghcr.io/yongjunshin/cv-infra-user/carter-sut@sha256:dc14a93cafca495419a92aee8c09070d29d38cfc62825919e192eb60390483b0
 
 interface:
   type: ros2

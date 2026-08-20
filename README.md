@@ -35,3 +35,14 @@ CI 게이트에 올라가는 시나리오는 **pass 기대** 2종(`nova_carter_w
 - **작성 규칙**: `cv_infra.oracles.base.OracleBase` 서브클래스(클래스 속성 `name`/`version` + `validate_params`/`evaluate` 구현). `evaluate(telemetry, criteria)`는 GT 텔레메트리와 병합 criteria view(시나리오 goal/timeout + 각 criterion `params:`의 평탄 병합)를 읽어 `OracleOutcome`을 반환한다. **결정적·순수 파이썬**으로 쓴다(시계·랜덤·네트워크 금지). 모듈 스코프 import는 **stdlib + `cv_infra.*`**(러너 이미지에 설치됨)만.
 - **모듈명은 고유하게**: 플러그인 파일명(=모듈명)은 러너 이미지에 이미 설치된 패키지명(`yaml`·`pydantic`·`cv_infra` 등)과 **비충돌**하는 고유한 이름으로 짓는다 — 이미 import된 이름과 겹치면 플러그인 대신 설치 패키지가 우선해(sys.modules 캐시) loud 에러("no attribute")로 실패한다(플랫폼 실측, 2026-07-11).
 - ⚠️ **oracle 모듈 스코프에서 `omni.*`/`isaacsim.*` import 금지.** 러너는 평가 엔진을 **시뮬레이터(엔진) 부팅 전에** 구성한다 — 모듈 스코프 Isaac import는 부팅 전에 크래시한다(플랫폼 실측 근거). Isaac 상태가 필요한 판정은 커스텀 oracle의 몫이 아니다(텔레메트리는 플랫폼이 수집해 전달).
+
+---
+
+## 운영 연결 (2026-08-20 — 프로덕션 컷오버)
+
+이 저장소는 CV-Infra 플랫폼에 **릴리즈 태그로만** 연결된다(`.github/workflows/verify.yml` →
+`uses: yongjunshin/cv-infra-workspace/.github/workflows/verify.yml@v1`). 상대경로 소스 참조는 없다.
+
+- 검증 평면: **etri6000**(RTX PRO 6000 Blackwell) — 자체 호스팅 러너 `etri6000-cv-infra-user`
+- 플랫폼 릴리즈: **v1.0.0**(불변) / `@v1`(major 별칭)
+- 트리거: **같은 저장소 브랜치 PR**. fork PR은 `packages: write` 미부여로 구조적으로 불가(R10 경계).
