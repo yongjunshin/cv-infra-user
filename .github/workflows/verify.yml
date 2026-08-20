@@ -18,9 +18,20 @@
 #
 # PINS (§2-7): every marketplace `uses:` is an immutable commit SHA (trailing
 # comment = semver tag). All five were re-resolved against the GitHub tag API on
-# 2026-08-20 — each SHA still carries exactly the tag named beside it. The
+# 2026-08-21 — each SHA still carries exactly the tag named beside it. The
 # platform is consumed via its release tag `@v1` (M8 §3.6 3-axis versioning: the
 # Action tag axis is a moving major tag by design — the one sanctioned non-SHA ref).
+#
+# ★ NODE 24 (p5c20): the first live E2E (run 32342581332, 2 passed / 0 failed)
+# annotated this job with "Node.js 20 is deprecated ... forced to run on Node.js
+# 24" for checkout / upload-artifact / login-action. Each moved to the LOWEST
+# major that actually declares `runs.using: node24`, at that major's newest patch
+# — the smallest delta from the live-proven path that clears the deprecation.
+# Trap: upload-artifact **v5 is not enough** (its notes advertise Node 24 but the
+# action still declares node20); v6 is the first that runs on it. The two
+# `docker/*` build actions were already node24 — unchanged, as the annotation
+# says. node24 actions need Actions Runner >= 2.327.1; all three run on
+# ubuntu-latest (GitHub-hosted), so the self-hosted GPU box is not involved.
 #
 # ★ EVIDENCE ANCHORS (G-24): the `~/cv-infra-p2-out/...` GPU-host paths cited in
 # the comments below were INTENTIONALLY EXPIRED on 2026-08-20 (p5c19 D-1). The
@@ -48,7 +59,7 @@ jobs:
       image_ref: ghcr.io/${{ github.repository }}/carter-sut@${{ steps.build.outputs.digest }}
     steps:
       - name: Check out PR head (consumer repo — never reaches the GPU box)
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       # Buildx with the `docker-container` driver. REQUIRED by the cache wiring
       # below: the default `docker` driver supports no cache exporter but `inline`,
@@ -57,7 +68,7 @@ jobs:
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Log in to GHCR
-        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -104,7 +115,7 @@ jobs:
           cp scenarios/nova_carter_warehouse_goal_b.yaml ci-inputs/scenarios/
 
       - name: Upload verification inputs
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: cv-infra-verification-inputs # reusable input `scenarios_artifact` default
           path: ci-inputs/
