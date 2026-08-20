@@ -99,22 +99,34 @@ Split a big `apt-get install` into **pinned RUN layers** (each a separate, resum
   surgery against ROS/PCL packaging) is over-engineering with runtime-breakage risk, so it is
   **not done** — the slim is a *partial* mitigation, not a full close of the pull wall.
 
-### Degraded-mode fallback (MVP-normative on the target network)
+### Degraded-mode fallback — **EXITED** (p5c9), kept here as the emergency recipe
 
-Because slim alone does not drop the max blob under the stall threshold, the **normal MVP path**
-is to **pre-stage the SUT image on the runner and reference it directly**, so `verify` skips the
-GHCR pull entirely (validated green x4 in p5c4):
+Degraded mode meant: pre-stage the SUT image on the runner as a local tag and have the scenario
+reference that tag, so `verify` skips the GHCR pull entirely. It was the normative path for
+p5c4-p5c8 because slim alone did not drop the max blob under the stall threshold.
+
+**That condition was met and the fallback was retired.** p5c9 pulled the consumer-built image
+through GHCR onto the GPU host live (611,855,749 B in 890 s, 2 of 2 scenarios pass, normal
+publish), so `.github/workflows/verify.yml` now hands cv-infra the **digest of the image the PR
+just built** — the ref-only contract (R10) exercised end to end rather than approximated. The
+p5c19 production cutover then deleted every workstation-local carter image, so the old
+`carter-sut:p2` tag no longer exists on the host: the recipe below re-creates a fallback, it
+does not restore one.
 
 ```bash
-# on the self-hosted GPU runner: pre-stage once (any channel that completes),
-# then scenarios reference the local ref — no CI-time GHCR pull:
+# EMERGENCY ONLY (a stalled pull). On the self-hosted GPU runner, pre-stage once:
 docker pull ghcr.io/<ORG>/cv-infra-user/carter-sut@sha256:<digest>   # or load from a saved tar
-docker tag  <that image>  carter-sut:p2      # local pre-staged ref used by scenarios
+docker tag  <that image>  <local-ref>
+# then hand that local ref in instead of the built digest — either edit the workflow's
+# `sut_image:` input, or for a standalone run pass `cv-infra submit --sut-image <local-ref>`.
 ```
 
-Revert to the full CI-build digest (pull-through) only once slim/split is proven end-to-end on
-the target network (decision B-A carry-forward, p5c6+). Until then, degraded-mode is the
-documented, supported deploy path (see also the redeploy manual, DoD-P5-08).
+> Note on `sut.image_ref` inside `scenarios/*.yaml`: those files still spell the retired
+> `carter-sut:p2`, and **CI never reads it** — the platform injects the image on the wire
+> (`--sut-image` flag > `$CV_INFRA_SUT_IMAGE` env > the scenario value), and the workflow sets
+> that env from its `sut_image` input. A **standalone** run with no injection would look for
+> `carter-sut:p2`, which no host still has; pass `--sut-image` in that case. The files keep the
+> old spelling because no stable replacement value exists until a build produces one.
 
 ## What we do NOT do
 
