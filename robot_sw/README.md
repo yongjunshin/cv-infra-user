@@ -121,12 +121,15 @@ docker tag  <that image>  <local-ref>
 # `sut_image:` input, or for a standalone run pass `cv-infra submit --sut-image <local-ref>`.
 ```
 
-> Note on `sut.image_ref` inside `scenarios/*.yaml`: those files still spell the retired
-> `carter-sut:p2`, and **CI never reads it** — the platform injects the image on the wire
-> (`--sut-image` flag > `$CV_INFRA_SUT_IMAGE` env > the scenario value), and the workflow sets
-> that env from its `sut_image` input. A **standalone** run with no injection would look for
-> `carter-sut:p2`, which no host still has; pass `--sut-image` in that case. The files keep the
-> old spelling because no stable replacement value exists until a build produces one.
+> Note on `sut.image_ref` inside `scenarios/*.yaml`: **CI never reads it** — the platform
+> injects the image on the wire (`--sut-image` flag > `$CV_INFRA_SUT_IMAGE` env > the scenario
+> value), and the workflow sets that env from its `sut_image` input. The field is therefore the
+> **standalone default**, and it must name an image that exists. All four scenarios now carry the
+> GHCR **digest** this repo published (`ghcr.io/<owner>/cv-infra-user/carter-sut@sha256:dc14a93c…`,
+> Actions run 32335188559) — the retired `carter-sut:p2` was a local workstation tag with no
+> RepoDigest and the p5c19 cutover deleted it, so submitting those files standalone used to fail.
+> When `robot_sw/` changes, the digest goes stale for standalone runs; refresh it from the newest
+> build (the PR path is unaffected — it always verifies the image that PR built).
 
 ## What we do NOT do
 
