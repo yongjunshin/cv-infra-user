@@ -1,0 +1,117 @@
+# nova_carter_warehouse_goal_random.yaml — p6 랜덤 표기의 소비자 인스턴스(3축) +
+# repeats 5 표본 + min_pass_ratio 0.8. 플랫폼이 이 한 장에서 5개의 CONCRETE 표본을
+# 파생(`derivation: {version, index}` 스탬프)해 한 운반체로 돌린다. 스키마·파생 규칙은
+# 플랫폼(M1) 소유 — 이 파일은 그것을 *행사*할 뿐이다.
+#
+# 소비자 스토리: "매번 정확히 같은 자리에서 출발해 같은 목표로 가는 검증"은 로봇이
+# 실제로 겪는 편차를 못 본다. 그래서 같은 창고 미션을 ① 출발 포즈 지터(3축) ②
+# 두 웨이포인트 중 하나 ③ 코스 밖 상자 위치로 흔들어 **5표본 중 4개 이상이 통과**
+# (`min_pass_ratio: 0.8`)해야 통과로 친다. 어느 표본 하나가 실패해도 PR이 즉시
+# 빨개지지 않고, 분포가 Check/sticky 표(`repeats`/`pass`/`fail`/`flaky`)에 그대로 보인다.
+#
+# 표기(플랫폼 계약, 인라인): `값` = 정적 · `{uniform: [lo, hi]}` · `{choice: [...]}`.
+# ⚠ `choice`는 **축마다 독립 draw**다 — x·y 양쪽에 choice를 쓰면 점 목록이 아니라
+# 교차곱이 된다(W3 실측이 남긴 함정). 여기서는 두 pass-proven 웨이포인트가 y만 다르므로
+# **y 한 축에만** choice를 두어 "정확히 두 점"을 얻는다.
+#
+# ★ 창(window) 근거 — 전부 이 프로젝트가 실제로 태운 값에서 왔다(임의 수치 금지):
+#   * initial_pose: AMCL이 자기를 초기화하는 (-6.0, -1.0, π) **주변**. 플랫폼 W1/W2/W3가
+#     쓴 창은 x U[-6.6,-5.4] · y U[-1.6,-0.4] · yaw U[2.8416,3.4416](±0.6 m / ±0.3 rad)이고,
+#     이 소비자 시나리오는 그 창의 **절반**(±0.3 m / ±0.15 rad)만 쓴다 — SUT는 블랙박스라
+#     멀리 옮기면 "랜덤"이 아니라 **모든 표본에서 똑같이** 위치측정이 깨진다(REQ-EXEC-005).
+#   * goal: 두 점 모두 **pass-proven** — (-6.0, 5.0) = 정본(`nova_carter_warehouse_goal.yaml`,
+#     cycle-5 run2/run6 라이브 pass), (-6.0, 3.0) = 변형 B(`…_goal_b.yaml`, 소비자 CI에서
+#     라이브 pass). yaw는 두 파일과 같은 1.5708 고정(`goal_orientation_wxyz` 미설정이라
+#     yaw 판정은 비활성).
+#   * debug_obstacle: **코스 밖**(출발점 뒤쪽 y[-5.5,-4.5], 미션은 +y 방향으로만 진행).
+#     W3(n=60) 실측 신호: 실패·타임아웃 표본은 상자가 출발 포즈에서 **0.74~2.1 m**에
+#     떨어진 경우에 몰렸고 통과 표본은 2.9 m 이상이었다 — 그래서 여기서는 상자↔출발
+#     최소 거리가 **3.2 m 이상**(창의 하한)이 되도록 창을 잡았다 — seed 42의 실파생 5표본은
+#     3.74~4.50 m로 떨어졌다.
+#     치수는 의도적 FAIL 픽스처와 같은 저프로파일 상자(0.15×0.5×0.6)를 그대로 쓴다.
+#
+# EXPECTED = pass, exit 0. 설계 의도는 **5/5 통과**이고 임계 0.8은 표본 하나의 흔들림을
+# 흡수하는 여유다(가정 표면화: 랜덤 시나리오의 표본 verdict는 결정론이 아니다 —
+# 같은 seed는 같은 *입력*을 재현하지만 SUT 비결정성은 재현하지 않는다,
+# decisions/2026-08-19-sut-nondeterminism-out-of-scope).
+#
+# 같은 seed·같은 문서 = 같은 5표본. `seed: 42`를 바꾸면 다른 5표본이 나온다.
+
+apiVersion: cv-infra/v1
+
+scenario:
+  scene: nova_carter_warehouse
+  robot: nova_carter
+  goal:
+    x: -6.0                              # 두 웨이포인트가 공유하는 lane 중심(정적)
+    y: {choice: [5.0, 3.0]}              # 정본 목표 / 변형 B 목표 — 이 축만 choice = 정확히 2점
+    yaw: 1.5708
+    frame: map
+  seed: 42                               # 파생 시드 = 사출 시드(REQ-EXEC-003, NFR-EXEC-001)
+  timeout_s: 120                         # 정본과 동일(측정 t2g 8.4~10.5 s 대비 충분)
+  initial_pose:                          # 출발 포즈 지터 3축 — AMCL 초기화 지점 (-6.0,-1.0,π) 주변
+    x: {uniform: [-6.3, -5.7]}
+    y: {uniform: [-1.3, -0.7]}
+    yaw: {uniform: [2.9916, 3.2916]}     # π ± 0.15 rad (~±8.6°)
+  debug_obstacle:                        # 코스 밖 상자(출발점 뒤 — 미션 경로와 교차하지 않는다)
+    x: {uniform: [-6.5, -5.5]}
+    y: {uniform: [-5.5, -4.5]}
+    height: 0.15                         # 치수는 랜덤화 축이 아니다(플랫폼 계약: x/y만 랜덤화 가능)
+    width: 0.5
+    depth: 0.6
+
+execution_settings:
+  repeats: 5                             # = 표본 수(p6 B-U 의미론). 배치 wall 예산 ≈ 부팅 1회 + 5미션
+  min_pass_ratio: 0.8                    # 4/5 이상 pass면 요청 verdict = pass(미선언 = any-fail)
+
+sut:
+  # identical to canonical — see nova_carter_warehouse_goal.yaml for this digest's
+  # provenance. CI always overrides it; it is the standalone default. The former
+  # `carter-sut:p2` was deleted in the p5c19 production cutover (not re-fetchable).
+  image_ref: ghcr.io/yongjunshin/cv-infra-user/carter-sut@sha256:dc14a93cafca495419a92aee8c09070d29d38cfc62825919e192eb60390483b0
+
+interface:
+  type: ros2
+  adapter_config:                        # identical to canonical (M1 canonical keys, measured values)
+    ros_distro: jazzy
+    rmw: rmw_fastrtps_cpp
+    use_sim_time: true
+    goal_interface:
+      kind: action
+      name: /navigate_to_pose
+      type: nav2_msgs/action/NavigateToPose
+    cmd_vel:
+      topic: /cmd_vel
+      type: geometry_msgs/msg/Twist
+    clock_topic: /clock
+    odom_topics:
+      - /odom
+      - /chassis/odom
+    sensors:
+      - topic: /front_3d_lidar/lidar_points
+        type: sensor_msgs/msg/PointCloud2
+        frame: front_3d_lidar
+      - topic: /front_2d_lidar/scan
+        type: sensor_msgs/msg/LaserScan
+        frame: front_2d_lidar
+      - topic: /back_2d_lidar/scan
+        type: sensor_msgs/msg/LaserScan
+        frame: back_2d_lidar
+    frames:
+      map: map
+      odom: odom
+      base_link: base_link
+    readiness:
+      is_active_service: /lifecycle_manager_navigation/is_active
+
+acceptance_criteria:                     # identical to canonical — 판정 기준은 흔들지 않는다
+  - oracle: reached_goal
+    params:
+      position_tolerance_m: 0.75
+      yaw_tolerance_rad: 0.26
+  - oracle: no_collision
+    params:
+      chassis_path: /World/Nova_Carter_ROS/chassis_link
+      collision_excluded_paths:
+        - /World/Nova_Carter_ROS
+        - /World/warehouse_with_forklifts/GroundPlane

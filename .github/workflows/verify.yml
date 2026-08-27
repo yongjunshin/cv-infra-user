@@ -103,16 +103,23 @@ jobs:
       # `scenarios/*.yaml` must match AND exit-2 annotation `file=` paths must
       # equal the PR-diff-relative paths (D-L consumer-repo-root relative).
       #
-      # Curated pass set for CI (walking-skeleton minimal): the two pass-proven
-      # nav-goal scenarios. `nova_carter_warehouse_obstacle_fail.yaml` is the
-      # intentional-FAIL fixture (DoD-P2-04, standalone use) and would turn every
-      # PR red by design; the custom-oracle pair stays a local/standalone example
-      # (D-1(a)). Both remain in `scenarios/` for those paths.
+      # Curated pass set for CI: the two pass-proven nav-goal scenarios + (p6c5)
+      # the randomized 3-axis one (`…_goal_random.yaml`, repeats 5 samples with
+      # `min_pass_ratio: 0.8` — one carrier, five samples).
+      # `nova_carter_warehouse_obstacle_fail.yaml` is the intentional-FAIL fixture
+      # (DoD-P2-04, standalone use) and would turn every PR red by design; the
+      # custom-oracle pair stays a local/standalone example (D-1(a)). Both remain
+      # in `scenarios/` for those paths.
+      #
+      # THIS LIST IS THE DELIVERY, not `scenarios/` (G-94): the GPU job never checks
+      # out PR-head source (R10), so a scenario that is not copied here does not
+      # exist for the verification — it is silently absent, never an error.
       - name: Stage verification inputs
         run: |
           mkdir -p ci-inputs/scenarios
           cp scenarios/nova_carter_warehouse_goal.yaml ci-inputs/scenarios/
           cp scenarios/nova_carter_warehouse_goal_b.yaml ci-inputs/scenarios/
+          cp scenarios/nova_carter_warehouse_goal_random.yaml ci-inputs/scenarios/
 
       - name: Upload verification inputs
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
