@@ -105,7 +105,10 @@ jobs:
       #
       # Curated pass set for CI: the two pass-proven nav-goal scenarios + (p6c5)
       # the randomized 3-axis one (`…_goal_random.yaml`, repeats 5 samples with
-      # `min_pass_ratio: 0.8` — one carrier, five samples).
+      # `min_pass_ratio: 0.8` — one carrier, five samples) + (p7c3) the obstacle
+      # one (`…_obstacles_random.yaml`: chair 1 · desk n={0..5} · forklift 2, also
+      # 5 samples / `min_pass_ratio: 0.8`; obstacle windows are off-course by
+      # >= 2.27 m of surface clearance, so pass is the expectation).
       # `nova_carter_warehouse_obstacle_fail.yaml` is the intentional-FAIL fixture
       # (DoD-P2-04, standalone use) and would turn every PR red by design; the
       # custom-oracle pair stays a local/standalone example (D-1(a)). Both remain
@@ -120,6 +123,7 @@ jobs:
           cp scenarios/nova_carter_warehouse_goal.yaml ci-inputs/scenarios/
           cp scenarios/nova_carter_warehouse_goal_b.yaml ci-inputs/scenarios/
           cp scenarios/nova_carter_warehouse_goal_random.yaml ci-inputs/scenarios/
+          cp scenarios/nova_carter_warehouse_obstacles_random.yaml ci-inputs/scenarios/
 
       - name: Upload verification inputs
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0

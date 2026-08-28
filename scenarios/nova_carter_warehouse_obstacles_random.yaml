@@ -1,0 +1,152 @@
+# nova_carter_warehouse_obstacles_random.yaml — p7 장애물 표기의 소비자 인스턴스
+# (종류 · 가변 개수 · yaw) + repeats 5 표본 + min_pass_ratio 0.8. 플랫폼이 이 한 장에서
+# 5개의 CONCRETE 표본을 파생(`derivation: {version, index}` 스탬프)해 한 운반체로 돌린다.
+# 스키마·파생·자산 레지스트리는 플랫폼(M1/M2) 소유 — 이 파일은 그것을 *행사*할 뿐이다.
+#
+# 소비자 스토리: 창고는 비어 있지 않다. 어제는 의자 하나였던 통로가 오늘은 책상 다섯 개와
+# 지게차 두 대가 서 있는 통로다. 그래서 같은 미션을 **표본마다 장애물의 종류·개수·자세를
+# 바꿔가며** 5번 돌리고, **5표본 중 4개 이상 통과**(`min_pass_ratio: 0.8`)해야 PR이 초록이
+# 된다. 어느 표본 하나가 흔들려도 즉시 빨개지지 않고, 분포는 Check/sticky 표
+# (`repeats`/`pass`/`fail`/`flaky`)에 그대로 보인다.
+#
+# 표기(플랫폼 계약, 인라인): `값` = 정적 · `{uniform: [lo, hi]}` · `{choice: [...]}` ·
+# `{randint: [lo, hi]}` = **개수 축 전용** 정수 균등 draw(닫힌 구간, 양끝 포함).
+# 한 `obstacles:` 원소 = "이런 걸 n개" 한 그룹이고, 파생이 표본마다 **count개의 싱글턴으로
+# 전개**한다(리스트 순서 = 전개 순서 = 러너의 prim 배정 순서). 정적 축은 draw를 소비하지
+# 않는다 — 아래 의자의 `yaw`는 생략(기본 0.0)이라 스트림을 밀지 않는다.
+# ⚠ `choice`는 **축마다 독립 draw**다(W3가 남긴 함정) — 지게차 `yaw`처럼 **한 축**에만 쓰면
+# "정확히 두 자세"지만, x·y 양쪽에 쓰면 점 목록이 아니라 교차곱이 된다.
+#
+# ★ 창(window) 근거 — 전부 이 프로젝트가 실제로 태운 값에서 왔다(임의 수치 금지):
+#   * initial_pose = **PR #3의 절반 창 그대로**(±0.3 m / ±0.15 rad; 플랫폼 W1/W2/W3의
+#     amcl_start 창 x U[-6.6,-5.4]·y U[-1.6,-0.4]·yaw U[2.8416,3.4416]의 절반). PR #3의
+#     CI 2런에서 **5/5 pass**로 검증된 창이다. 왜 넓히지 않는가: W3(n=60)·p7c2 W1(n=12)에서
+#     판정 분산은 승계 결함(realign/AMCL)과 SUT 비결정성이 지배했고(동일 구체 스펙이
+#     pass↔fail로 뒤집힌 관측), 이 파일의 주인공은 **장애물 축**이다 — 다른 축을 pass-proven
+#     값으로 좁혀야 장애물 축의 신호가 산다.
+#   * goal = 정본 `(-6.0, 5.0, 1.5708)` **정적**(`nova_carter_warehouse_goal.yaml`,
+#     cycle-5 bringup run2/run6 + PR #3 라이브 pass). 같은 이유로 축을 하나만 흔든다.
+#   * obstacles = **코스 밖 + 코스-표면 이격 ≥ 2.27 m**. 2.27 m는 p7c2 W1이 쓴 기준이고
+#     (W3의 통과-이격 신호에서 유도), 그 12표본 실파생 최솟값은 2.680 m였다
+#     (history/2026-08-28-p7c2-obstacle-essentials.md 인계 7). 이 파일의 산출:
+#       - **코스** = 출발 창과 목표를 감싸는 보수 사각형 `x[-6.3,-5.7] × y[-1.3,5.0]`.
+#       - **표면** = W0 실측 bbox의 **최악 자세(반대각)** — chair 0.600×0.599 → 0.4239 m ·
+#         desk 0.800×2.800 → 1.4560 m · forklift 1.214×3.495 → 1.8499 m. yaw가 랜덤이어도
+#         이 반대각으로 재면 **어떤 자세에서도** 이격이 성립한다.
+#       - **창 하한(설계)** = 의자 2.676 m · 책상 2.774 m · 지게차 2.850 m ≥ 2.27 m.
+#       - **seed 42의 실파생 5표본(실측)**: 장애물 3~8개(책상 5·5·5·0·3), 이격
+#         **2.797~6.320 m**(최악-자세 기준) / 실제 뽑힌 yaw로 재면 2.921~7.279 m.
+#   * 창을 **어디에** 두는가도 SUT 자신의 맵에서 왔다: p6c3 T3이 SUT 이미지 안의
+#     `carter_warehouse_navigation.png`(res 0.05)에 거리변환을 돌려 자유공간 여유를
+#     **(-2,2) = 5.840 m · (-3,8) = 5.700 m**로 실측했다. 세 창은 네 꼭짓점 전부가
+#     `중심거리 + 반대각 ≤ 그 여유`를 만족하도록 잡았다 — 즉 **정적 창고 형상과 겹치지
+#     않음이 실측 반경 안에서 보장**된다(맵은 SUT 이미지 안에 있어 여기서 다시 못 읽는다).
+#   * box는 **일부러 넣지 않았다**: 내장 큐보이드 버킷은 p7c2 W1의 혼합 배치(풀 9)에서 이미
+#     라이브 커버됐고, 레거시 상자 경로는 `…_goal_random.yaml`이 같은 CI 게이트에서 계속
+#     행사한다. 이 파일의 축은 **실자산 종류·가변 개수·yaw**다.
+#
+# ★ 장애물 접촉은 판정에 **집계된다**(사양): 섀시가 `/World/cv_obstacles/...`에 닿으면
+#   `no_collision` 오라클의 `collision_count`로 잡힌다(p7c2 W1 실증: 근접 의자 배치에서
+#   collision_count=27, 접촉 파트너에 `/World/cv_obstacles/chair_*`). 집계에서 빼고 싶으면
+#   `collision_excluded_paths`에 `/World/cv_obstacles`를 추가하면 된다 — **이 파일은 그
+#   손잡이를 일부러 쓰지 않는다**(장애물이 판정에 영향을 주는 것이 이 시나리오의 요점).
+#
+# ★ 정직한 한계: 그룹 안 인스턴스들은 **서로 독립 draw**다 — 계약에 인스턴스 간 최소 간격
+#   개념이 없어서 책상 5개가 겹쳐 설 수 있다. 정적 콜라이더끼리는 접촉 이벤트가 없어
+#   **판정 영향 0**이고, 비용은 영상에서 겹쳐 보이는 것뿐이다(v1 수용).
+#
+# EXPECTED = pass, exit 0. 설계 의도는 **5/5 통과**이고 임계 0.8은 표본 하나의 흔들림을
+# 흡수하는 여유다(가정 표면화: 표본 verdict는 결정론이 아니다 — 같은 seed는 같은 *입력*을
+# 재현하지만 SUT 비결정성은 재현하지 않는다, decisions/2026-08-19-sut-nondeterminism-out-of-scope).
+#
+# 같은 seed·같은 문서 = 같은 5표본(개수·좌표·yaw 전부). `seed: 42`를 바꾸면 다른 5표본이
+# 나온다. 부수 확인용 지문: 장애물 walk는 기존 스칼라 draw **뒤에 append**되므로, 이 문서의
+# 5표본 출발 포즈는 PR #3의 5표본과 **같은 값**이다(파생 규칙 `cv-derive/1` 불변의 관측면).
+
+apiVersion: cv-infra/v1
+
+scenario:
+  scene: nova_carter_warehouse
+  robot: nova_carter
+  goal:                                  # 정본과 동일(정적) — 흔드는 축은 출발 포즈 + 장애물뿐
+    x: -6.0
+    y: 5.0
+    yaw: 1.5708
+    frame: map
+  seed: 42                               # 파생 시드 = 사출 시드(REQ-EXEC-003, NFR-EXEC-001)
+  timeout_s: 120                         # 정본과 동일(측정 t2g 8.4~10.5 s 대비 충분)
+  initial_pose:                          # PR #3의 절반 창 그대로(pass-proven) — 헤더 ★ 참조
+    x: {uniform: [-6.3, -5.7]}
+    y: {uniform: [-1.3, -0.7]}
+    yaw: {uniform: [2.9916, 3.2916]}     # π ± 0.15 rad (~±8.6°)
+  obstacles:                             # ↓ 세 그룹 = "의자 1 · 책상 n={0~5} · 지게차 2"
+    - asset: chair                       # 레지스트리 이름(러너 소유 표) — 0.600×0.599 m
+      count: 1                           # 정적 개수 = draw 비소비
+      x: {uniform: [-2.6, -2.0]}         # 코스에서 3.1 m 이상 → 표면 이격 ≥ 2.676 m
+      y: {uniform: [1.0, 3.0]}           # yaw 생략 = 정적 0.0(위치만 랜덤)
+    - asset: desk                        # 0.800×2.800 m — 창고에 흔한 큰 가구
+      count: {randint: [0, 5]}           # ★ 표본마다 개수가 다르다(0개 표본도 사양)
+      x: {uniform: [-1.5, 0.0]}          # 목표 너머 북동쪽 개활지(자유공간 여유 5.700 m 실측점 주변)
+      y: {uniform: [5.5, 10.5]}
+      yaw: {uniform: [-3.1416, 3.1416]}  # 전방위 자세 — 반대각으로 이격을 잡아 자세 무관하게 성립
+    - asset: forklift                    # 1.214×3.495 m — CEO 예시 "자동차"의 대체(5.1.0 자산루트에
+      count: 2                           #   승용차 시각 자산 0 — p7c1 W0가 5,529개 usd 열거로 실측)
+      x: {uniform: [-1.0, 1.0]}          # 동쪽 개활지(자유공간 여유 5.840 m 실측점 주변)
+      y: {uniform: [0.0, 4.0]}
+      yaw: {choice: [0.0, 1.5708]}       # 두 자세 중 하나 — choice는 축마다 독립 draw라 한 축에만
+
+execution_settings:
+  repeats: 5                             # = 표본 수(p6 B-U 의미론). 풀 = 표본별 최대 다중도 8 prim
+  min_pass_ratio: 0.8                    # 4/5 이상 pass면 요청 verdict = pass(미선언 = any-fail)
+
+sut:
+  # identical to canonical — see nova_carter_warehouse_goal.yaml for this digest's
+  # provenance. CI always overrides it; it is the standalone default. The former
+  # `carter-sut:p2` was deleted in the p5c19 production cutover (not re-fetchable).
+  image_ref: ghcr.io/yongjunshin/cv-infra-user/carter-sut@sha256:dc14a93cafca495419a92aee8c09070d29d38cfc62825919e192eb60390483b0
+
+interface:
+  type: ros2
+  adapter_config:                        # identical to canonical (M1 canonical keys, measured values)
+    ros_distro: jazzy
+    rmw: rmw_fastrtps_cpp
+    use_sim_time: true
+    goal_interface:
+      kind: action
+      name: /navigate_to_pose
+      type: nav2_msgs/action/NavigateToPose
+    cmd_vel:
+      topic: /cmd_vel
+      type: geometry_msgs/msg/Twist
+    clock_topic: /clock
+    odom_topics:
+      - /odom
+      - /chassis/odom
+    sensors:
+      - topic: /front_3d_lidar/lidar_points
+        type: sensor_msgs/msg/PointCloud2
+        frame: front_3d_lidar
+      - topic: /front_2d_lidar/scan
+        type: sensor_msgs/msg/LaserScan
+        frame: front_2d_lidar
+      - topic: /back_2d_lidar/scan
+        type: sensor_msgs/msg/LaserScan
+        frame: back_2d_lidar
+    frames:
+      map: map
+      odom: odom
+      base_link: base_link
+    readiness:
+      is_active_service: /lifecycle_manager_navigation/is_active
+
+acceptance_criteria:                     # identical to canonical — 판정 기준은 흔들지 않는다
+  - oracle: reached_goal
+    params:
+      position_tolerance_m: 0.75
+      yaw_tolerance_rad: 0.26
+  - oracle: no_collision                 # 장애물 접촉이 여기 집계된다(헤더 ★)
+    params:
+      chassis_path: /World/Nova_Carter_ROS/chassis_link
+      collision_excluded_paths:          # `/World/cv_obstacles`는 일부러 빼지 않는다
+        - /World/Nova_Carter_ROS
+        - /World/warehouse_with_forklifts/GroundPlane
