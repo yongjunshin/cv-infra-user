@@ -15,7 +15,9 @@ CV-Infra **소비자 / E2E 픽스처** (public). 로봇 SW 개발자 입장에�
 3. PR에서 결과를 받는다 — Check 결론(pass/fail/**인프라 문제**는 서로 다른 신호), 매트릭스+회귀 sticky 코멘트, `result.json`·MCAP·영상 artifact.
 4. YAML이 틀리면 검증이 돌기 전에 **PR diff 위 inline annotation**으로 알려준다(exit 2). 로봇이 실패한 것과 구분된다.
 
-CI 게이트에 올라가는 시나리오는 **pass 기대** 2종(`nova_carter_warehouse_goal{,_b}.yaml`)이다. `nova_carter_warehouse_obstacle_fail.yaml`은 **의도적 FAIL 픽스처**라 게이트에 넣으면 모든 PR이 빨개진다 — 필요할 때 수동으로 돌린다.
+CI 게이트에 올라가는 시나리오는 **pass 기대** 3종 — 고정 목표 2종(`nova_carter_warehouse_goal{,_b}.yaml`)과 **랜덤 3축**(`nova_carter_warehouse_goal_random.yaml`: 출발 포즈 지터 · 두 웨이포인트 중 하나 · 코스 밖 상자, `repeats: 5` 표본 · `min_pass_ratio: 0.8`). 랜덤 시나리오는 **한 장의 문서에서 플랫폼이 5표본을 파생**해 한 번의 부팅으로 돌리고, 분포가 sticky 코멘트 표(`repeats`/`pass`/`fail`/`flaky`)에 그대로 보인다. `nova_carter_warehouse_obstacle_fail.yaml`은 **의도적 FAIL 픽스처**라 게이트에 넣으면 모든 PR이 빨개진다 — 필요할 때 수동으로 돌린다.
+
+> ⚠ **게이트에 올릴 시나리오는 `.github/workflows/verify.yml`의 `Stage verification inputs` cp 목록에 추가해야 한다** — GPU 잡은 PR 소스를 체크아웃하지 않고(R10) 이 목록이 만든 artifact만 본다. `scenarios/`에 파일을 두는 것만으로는 **조용히 안 돌아간다**.
 
 ## 개요
 - **담당 팀**: CV-User 팀 (E2E 픽스처·소비자). PM 지휘 하에 **플랫폼 계약의 타당성을 소비자 관점에서 구현·테스트**하고 마찰을 피드백한다.
