@@ -15,7 +15,9 @@ CV-Infra **소비자 / E2E 픽스처** (public). 로봇 SW 개발자 입장에�
 3. PR에서 결과를 받는다 — Check 결론(pass/fail/**인프라 문제**는 서로 다른 신호), 매트릭스+회귀 sticky 코멘트, `result.json`·MCAP·영상 artifact.
 4. YAML이 틀리면 검증이 돌기 전에 **PR diff 위 inline annotation**으로 알려준다(exit 2). 로봇이 실패한 것과 구분된다.
 
-CI 게이트에 올라가는 시나리오는 **pass 기대** 4종 — 고정 목표 2종(`nova_carter_warehouse_goal{,_b}.yaml`) · **랜덤 3축**(`nova_carter_warehouse_goal_random.yaml`: 출발 포즈 지터 · 두 웨이포인트 중 하나 · 코스 밖 상자, `repeats: 5` 표본 · `min_pass_ratio: 0.8`) · **랜덤 장애물**(`nova_carter_warehouse_obstacles_random.yaml`: 의자 1 · 책상 `{randint: [0, 5]}` · 지게차 2를 표본마다 다른 위치·자세로 배치, 역시 `repeats: 5` · `min_pass_ratio: 0.8`). 랜덤 시나리오는 **한 장의 문서에서 플랫폼이 5표본을 파생**해 한 번의 부팅으로 돌리고, 분포가 sticky 코멘트 표(`repeats`/`pass`/`fail`/`flaky`)에 그대로 보인다. `nova_carter_warehouse_obstacle_fail.yaml`은 **의도적 FAIL 픽스처**라 게이트에 넣으면 모든 PR이 빨개진다 — 필요할 때 수동으로 돌린다.
+CI 게이트에 올라가는 시나리오는 **pass 기대 4종** — 고정 목표 2종(`nova_carter_warehouse_goal{,_b}.yaml`) · **랜덤 3축**(`nova_carter_warehouse_goal_random.yaml`: 출발 포즈 지터 · 두 웨이포인트 중 하나 · 코스 밖 상자, `repeats: 5` 표본 · `min_pass_ratio: 0.8`) · **랜덤 장애물**(`nova_carter_warehouse_obstacles_low_random.yaml`: 상자 1 · `{randint: [0, 5]}` · 2를 표본마다 다른 위치·자세로 배치 — 발자국은 의자·책상·지게차의 실측 bbox 그대로, 높이는 **0.10 m**, 역시 `repeats: 5` · `min_pass_ratio: 0.8`). 랜덤 시나리오는 **한 장의 문서에서 플랫폼이 5표본을 파생**해 한 번의 부팅으로 돌리고, 분포가 sticky 코멘트 표(`repeats`/`pass`/`fail`/`flaky`)에 그대로 보인다.
+
+게이트에 **올리지 않는** 시나리오 3종(전부 `scenarios/`에 그대로 있고 필요할 때 수동으로 돌린다): `nova_carter_warehouse_obstacle_fail.yaml`(**의도적 FAIL 픽스처** — 게이트에 넣으면 모든 PR이 빨개진다) · `nova_carter_warehouse_custom_oracle.yaml`(커스텀 oracle 예시) · `nova_carter_warehouse_obstacles_random.yaml`(**가구 3종 데모** — 지도에 없는 가구가 이 SUT의 `/scan`에 보이면 AMCL이 측위를 잃어 같은 문서가 5/5와 1/5을 오간다. 안정적 게이트가 될 수 없고, 그 실패는 인프라 결함이 아니라 **제품이 잡아낸 SUT의 한계**다 — 실측 근거는 파일 헤더에 있다).
 
 > ⚠ **게이트에 올릴 시나리오는 `.github/workflows/verify.yml`의 `Stage verification inputs` cp 목록에 추가해야 한다** — GPU 잡은 PR 소스를 체크아웃하지 않고(R10) 이 목록이 만든 artifact만 본다. `scenarios/`에 파일을 두는 것만으로는 **조용히 안 돌아간다**.
 
