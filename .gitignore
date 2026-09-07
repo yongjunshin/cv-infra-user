@@ -1,12 +1,11 @@
-# ROS 2 colcon build artifacts
-build/
-install/
-log/
+# Case output — the directory itself is committed (verify/out/.gitkeep) because the
+# platform mounts over it; what the sim writes into it is not.
+verify/out/*
+!verify/out/.gitkeep
 
 # Python caches
 __pycache__/
 *.py[cod]
-*.egg-info/
 
 # OS / editor noise
 .DS_Store

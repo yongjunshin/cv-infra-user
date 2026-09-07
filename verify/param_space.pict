@@ -1,0 +1,30 @@
+# verify/param_space.pict — this repository's input space, in Microsoft PICT syntax.
+#
+# cv-infra expands this into a pairwise (k=2) covering array and runs verify/sim.py
+# once per row, `repeats` times. It reads names and values; what any of them MEAN is
+# ours.
+#
+# AXIS NAME -> ARGV. Every axis becomes one flag: `drive_v: 0.2` is handed to the
+# script as `--drive_v=0.2`, in the order declared here. So a name must match
+# verify/sim.py's argparse exactly and must be CLI-flag-safe
+# (^[A-Za-z][A-Za-z0-9_-]*$, and never `help`/`h`). Values travel as text — the
+# script parses them.
+#
+# THIS FILE IS THE COMMITTED ARRAY. The covering array is derived from this file at
+# every run, and each case is identified by a hash of its own axis assignment, so a
+# baseline follows a case across commits only as long as its values are untouched.
+# Editing a value (or a name) retires the old case and starts the new one without a
+# baseline — a rename is a deliberate act, not a formatting change.
+#
+# PICT picks the CELL: it is discrete and combinatorial, so it answers "which
+# combinations must be tried". "How much does one cell vary" is what `repeats`
+# answers instead.
+
+drive_v:   0.2, 0.4
+drive_t:   5, 10
+yaw_rate:  0.0, 0.3
+
+# Turning eats the aisle. The warehouse lane the sample places the robot in is not
+# long enough to arc for 10 s, so a long turning run only ever proves that a rack is
+# where the map says it is.
+IF [yaw_rate] = 0.3 THEN [drive_t] <= 5;

@@ -1,174 +1,46 @@
-# Consumer verify.yml — the cv-infra-user INSTANCE of the platform-owned template
-# (source of truth: cv-infra-workspace/.github/workflows/verify.yml header, D-H —
-# consumed here as contract + release ref ONLY, no relative-path source reference).
+# Consumer verify.yml — the whole integration surface this repository maintains.
 #
-# Consumer story (CV-User charter §1): a robot-SW project pushes a PR; CI builds
-# its robot image (SUT), hands cv-infra an image REF + scenario declarations, and
-# gets back a Check + sticky comment + artifacts on the PR (DoD-P5-01/02).
+# One job, one `uses:`. Everything cv-infra needs is in the `with:` block below: the
+# standalone Isaac script to run, the input space to expand into cases, the directory
+# the script writes into (collected and zipped per case), and the script that turns
+# that output into a verdict. The platform is consumed as a contract + a workflow ref
+# ONLY — no relative-path reference into its source.
 #
-# PROVENANCE (p5c19): this is NOT a fresh design. It is the `p5c4-e2e` branch's
-# live-proven instance (7 pushes over 3 cycles: p5c4 observed DoD-P5-01/03/13/14
-# live, p5c8 rendered the regression path, p5c9 wired the build cache and exited
-# degraded mode) promoted onto `main` now that MVP is closed and etri6000 is the
-# production plane. The ★ marks below are the only post-cutover corrections.
+# The called workflow runs on the self-hosted GPU workstation and posts the result
+# back onto this PR as a Check Run + a sticky comment + artifacts.
 #
-# SECURITY (D-J / R10): plain `pull_request` trigger ONLY — never its privileged
-# base-context variant. The SUT reaches the GPU box as an image REF only; the GPU
-# job never checks out PR-head source (scenario YAMLs travel as an artifact).
+# PIN (env reproducibility): `@minimal-verify` is a BRANCH ref, used only because the
+# rewritten platform has no release tag yet. MOVE IT TO THE RELEASE TAG the moment one
+# exists — a branch ref can change underneath us, which is exactly what a pin prevents.
 #
-# PINS (§2-7): every marketplace `uses:` is an immutable commit SHA (trailing
-# comment = semver tag). All five were re-resolved against the GitHub tag API on
-# 2026-08-21 — each SHA still carries exactly the tag named beside it. The
-# platform is consumed via its release tag `@v1` (M8 §3.6 3-axis versioning: the
-# Action tag axis is a moving major tag by design — the one sanctioned non-SHA ref).
-#
-# ★ NODE 24 (p5c20): the first live E2E (run 32342581332, 2 passed / 0 failed)
-# annotated this job with "Node.js 20 is deprecated ... forced to run on Node.js
-# 24" for checkout / upload-artifact / login-action. Each moved to the LOWEST
-# major that actually declares `runs.using: node24`, at that major's newest patch
-# — the smallest delta from the live-proven path that clears the deprecation.
-# Trap: upload-artifact **v5 is not enough** (its notes advertise Node 24 but the
-# action still declares node20); v6 is the first that runs on it. The two
-# `docker/*` build actions were already node24 — unchanged, as the annotation
-# says. node24 actions need Actions Runner >= 2.327.1; all three run on
-# ubuntu-latest (GitHub-hosted), so the self-hosted GPU box is not involved.
-#
-# ★ EVIDENCE ANCHORS (G-24): the `~/cv-infra-p2-out/...` GPU-host paths cited in
-# the comments below were INTENTIONALLY EXPIRED on 2026-08-20 (p5c19 D-1). The
-# file list + sizes + sha256 survive in the project's evidence manifest and every
-# number quoted here is also in the project WORKLOG (2026-08-03 / 2026-08-04).
-# The measurements stand; the raw trees are gone. A dead path here is an expired
-# anchor, not a missing measurement.
+# SECURITY: the plain `pull_request` trigger only, never its privileged base-context
+# variant — executing fork-PR head code with base secrets on a self-hosted GPU box is
+# an RCE pattern. A fork PR consequently needs a maintainer's approval before it can
+# reach the runner.
 
 name: cv-infra-verify
 
 on:
-  pull_request: # plain pull_request only (D-J) — never the privileged base-context variant
+  pull_request:
+  push:
+    branches: [main]
 
 jobs:
-  # ── Job 1: build the carter SUT image (GitHub-hosted, GPU-free) ──────────────
-  # SUT build is OUTSIDE the cv-infra boundary (REQ-EXEC-004: the platform takes
-  # a pre-built image ref). GHCR push uses the workflow GITHUB_TOKEN (M8 §2).
-  build-sut:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write # GHCR push via GITHUB_TOKEN — no PAT
-    outputs:
-      # Digest-pinned ref (immutable) — the only thing cv-infra receives (R10).
-      image_ref: ghcr.io/${{ github.repository }}/carter-sut@${{ steps.build.outputs.digest }}
-    steps:
-      - name: Check out PR head (consumer repo — never reaches the GPU box)
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-
-      # Buildx with the `docker-container` driver. REQUIRED by the cache wiring
-      # below: the default `docker` driver supports no cache exporter but `inline`,
-      # so `cache-to: type=gha` cannot run without this step.
-      - name: Set up Buildx (docker-container driver — prerequisite for cache export)
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
-
-      - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Build cache (p5c8 §7 diagnosis): this build had NO cache backend wired, so
-      # every push re-ran the heavy apt/nav2 layer and produced a NEW digest for all
-      # 8 non-base layers — 582,116,064 compressed bytes re-pushed per PR update
-      # (evidence: ~/cv-infra-p2-out/p5c8/cache/01-manifest-diff.txt, expired — see
-      # header). The base image layers were never the problem (`Already exists`).
-      # `type=gha` = the GitHub Actions cache backend (10 GB/repo); `mode=max` also
-      # caches intermediate stages, which is what makes the apt layer reusable.
-      # Measured after wiring (p5c9): `CACHED` 0 -> 8, build-sut 3m29s -> 29s, GHCR
-      # upload 582,119,034 B -> 3,252 B on a repeat push.
-      # `ignore-error=true`: a cache-export outage must not fail an already-pushed
-      # image and starve the GPU verification job of its input (the export error is
-      # still printed, and a silently missing cache shows up as `CACHED` = 0).
-      - name: Build and push carter SUT image
-        id: build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: robot_sw
-          push: true
-          tags: ghcr.io/${{ github.repository }}/carter-sut:pr-${{ github.event.pull_request.number }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max,ignore-error=true
-
-      # Stage the scenario declarations for the GPU job. Staged under a single
-      # root so the artifact PRESERVES the `scenarios/` prefix (upload-artifact
-      # roots the artifact at the least common ancestor of its paths): the
-      # reusable workflow downloads this into its CWD, where the default glob
-      # `scenarios/*.yaml` must match AND exit-2 annotation `file=` paths must
-      # equal the PR-diff-relative paths (D-L consumer-repo-root relative).
-      #
-      # Curated pass set for CI: the two pass-proven nav-goal scenarios + (p6c5)
-      # the randomized 3-axis one (`…_goal_random.yaml`, repeats 5 samples with
-      # `min_pass_ratio: 0.8` — one carrier, five samples) + (p7c3) the obstacle
-      # one (`…_obstacles_low_random.yaml`: 1 · n={0..5} · 2 boxes carrying the
-      # chair/desk/forklift footprints, also 5 samples / `min_pass_ratio: 0.8`).
-      #
-      # ★ 2026-08-29 (CEO ruling, T5 evidence): the obstacle gate is the LOW-box
-      # document, not the furniture one. Off-course placement is NOT what makes a
-      # sample pass — VISIBILITY is: an unmapped obstacle inside this SUT's /scan
-      # band (floor 0.1256 m, measured) throws AMCL off, and the belief error
-      # transfers straight into the oracle's GT distance. Same coordinates, same
-      # counts, same footprints, height 0.15 -> 0.10 m flipped /scan detection
-      # 17 % -> 0 % and pass 3/5 -> 5/5 (T5 arms C/H, 60 GPU samples).
-      # `…_obstacles_random.yaml` (the real chair/desk/forklift assets) therefore
-      # stays in `scenarios/` as a NON-GATED demo: its verdict is a distribution,
-      # not a point — the identical document scored 5/5 and 1/5 on back-to-back
-      # runs (arms G/G2), so it cannot be a stable gate. Its CI failure on PR #4
-      # was a FINDING about the SUT, not a platform defect.
-      #
-      # `nova_carter_warehouse_obstacle_fail.yaml` is the intentional-FAIL fixture
-      # (DoD-P2-04, standalone use) and would turn every PR red by design; the
-      # custom-oracle pair stays a local/standalone example (D-1(a)). All of them
-      # remain in `scenarios/` for those paths.
-      #
-      # THIS LIST IS THE DELIVERY, not `scenarios/` (G-94): the GPU job never checks
-      # out PR-head source (R10), so a scenario that is not copied here does not
-      # exist for the verification — it is silently absent, never an error.
-      - name: Stage verification inputs
-        run: |
-          mkdir -p ci-inputs/scenarios
-          cp scenarios/nova_carter_warehouse_goal.yaml ci-inputs/scenarios/
-          cp scenarios/nova_carter_warehouse_goal_b.yaml ci-inputs/scenarios/
-          cp scenarios/nova_carter_warehouse_goal_random.yaml ci-inputs/scenarios/
-          cp scenarios/nova_carter_warehouse_obstacles_low_random.yaml ci-inputs/scenarios/
-
-      - name: Upload verification inputs
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        with:
-          name: cv-infra-verification-inputs # reusable input `scenarios_artifact` default
-          path: ci-inputs/
-
-  # ── Job 2: verify on the GPU workstation (platform-owned reusable workflow) ──
-  # Job-level `uses:` (D-H): this job carries NO runs-on/steps — the platform's
-  # verify.yml IS the job definition (runner selection via its `runner_label`
-  # input). Everything below the `uses:` line is the whole integration surface
-  # a consumer maintains (REQ-INTAKE-003).
   verify:
-    needs: build-sut
+    # Job-level `uses:` — this job carries no `runs-on`/`steps` of its own; the called
+    # workflow is the definition.
     permissions:
-      checks: write # Check Run posting
-      pull-requests: write # sticky comment upsert
+      checks: write # post the Check Run
+      pull-requests: write # upsert the sticky comment
       contents: read
-    uses: yongjunshin/cv-infra-workspace/.github/workflows/verify.yml@v1
+    uses: yongjunshin/cv-infra-workspace/.github/workflows/verify.yml@minimal-verify
     with:
-      # ★ p5c19: cv-infra verifies the image THIS PR built — no degraded fallback.
-      # p5c4-p5c8 consumed a workstation-local `carter-sut:p2` instead, because
-      # GHCR pulls to that host stalled (p5c6 transport diagnosis); p5c9 exited
-      # that live (cold pull 611,855,749 B / 890 s, 2/2 pass, normal publish), and
-      # the p5c19 production cutover then DELETED every workstation-local carter
-      # image — so this line is now the only path and the old "put `carter-sut:p2`
-      # back" rollback no longer exists. Cost note: the cutover also removed the
-      # host's cached consumer SUT layers, so the FIRST PR after it pays a full
-      # cold pull again (~600 MB); subsequent PR updates ride the build cache and
-      # push only the changed layers.
-      sut_image: ${{ needs.build-sut.outputs.image_ref }} # ghcr.io/<repo>/carter-sut@sha256:… (R10 ref-only)
-      scenarios: scenarios/*.yaml
-      runner_label: cv-infra-gpu
-      # `api` left at its default (same-host orchestrator, M8 §8 g5 MVP topology).
-      # `timeout_s` left at its default (3600).
+      sim_script: verify/sim.py
+      sim_input_space: verify/param_space.pict
+      # Must exist in the checkout (that is what verify/out/.gitkeep is for): the
+      # platform mounts the case's output directory over this path.
+      sim_output_dir: verify/out
+      # Present = this check GATES. Remove it and the same matrix runs as a sweep.
+      oracle_script: verify/oracle.py
+      pict_k: 2
+      repeats: 1
