@@ -15,7 +15,7 @@ PR에 Check · sticky 코멘트 · 아티팩트(케이스별 출력 zip + 시뮬
 | `verify/param_space.pict` | **입력 공간**(Microsoft PICT 문법). 축 이름 = argv 플래그: `drive_v: 0.2` → `--drive_v=0.2`. 플랫폼이 여기서 페어와이즈(k=2) 커버링 배열을 만들어 케이스를 뽑는다. |
 | `verify/oracle.py` | **판정.** 시뮬 직후 같은 이미지·같은 argv로(GPU 없이) 돌아 `trajectory.csv`를 읽고 평평한 JSON dict 한 줄을 stdout에 낸다. |
 | `verify/out/.gitkeep` | 출력 디렉토리를 **커밋된 상태로** 두기 위한 파일 — 아래 참고. |
-| `.github/workflows/verify.yml` | 잡 하나(`uses: …@…`)와 `with:` 입력 6개. 이 저장소가 유지하는 통합 표면 전부. |
+| `.github/workflows/verify.yml` | 잡 하나(`uses: …@…`)와 `with:` 입력 7개. 이 저장소가 유지하는 통합 표면 전부. |
 
 ## 판정은 타입으로 말한다
 
@@ -33,6 +33,21 @@ PR에 Check · sticky 코멘트 · 아티팩트(케이스별 출력 zip + 시뮬
 > ⚠ **exit code는 판정이 아니다.** `SimulationApp.close()`는 무슨 일이 있었든 프로세스를 status 0으로
 >끝내고, stock `python.sh`는 비0을 1로 뭉갠다. 그래서 `sim.py`의 종료 코드는 pass/fail을 실을 수
 > 없고, 오직 "이 케이스가 ERROR였다"만 의미한다. pass/fail은 전부 `oracle.py`가 결정한다.
+
+## 시뮬 이미지는 다이제스트로 고정한다
+
+`sim_image`는 **필수 입력**이고, 값은 태그가 아니라 **다이제스트**여야 한다(플랫폼이 태그를 거부한다).
+Isaac Sim은 메이저 사이에 Python API가 깨지고 `5.1.0` 태그는 같은 이름으로 다시 푸시될 수 있으니,
+`verify/sim.py`가 실제로 맞춰 쓰인 그 이미지를 다이제스트로 못 박아야 CI가 "로컬에서 테스트한 그
+환경"이 된다. 다이제스트를 읽는 법:
+
+```bash
+docker inspect --format '{{index .RepoDigests 0}}' nvcr.io/nvidia/isaac-sim:5.1.0
+```
+
+아래 로컬 `docker run`도 **워크플로의 `sim_image`와 같은 다이제스트**를 쓴다. 이미지를 올릴 때는
+`.github/workflows/verify.yml`과 이 README를 **같이** 고친다 — 한쪽만 바뀌면 로컬에서 재현한 게
+CI가 돌린 것과 다른 이미지가 된다.
 
 ## 로컬에서 같은 케이스 돌리기
 

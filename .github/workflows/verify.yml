@@ -40,6 +40,12 @@ jobs:
       # Must exist in the checkout (that is what verify/out/.gitkeep is for): the
       # platform mounts the case's output directory over this path.
       sim_output_dir: verify/out
+      # REQUIRED, and a digest — the platform refuses a bare tag. This is the exact
+      # image `verify/sim.py` was written against, so a repush of the `5.1.0` tag
+      # cannot silently change the Isaac Python API underneath the script. The README's
+      # local `docker run` names the same digest on purpose; move both together.
+      # To update: docker inspect --format '{{index .RepoDigests 0}}' nvcr.io/nvidia/isaac-sim:5.1.0
+      sim_image: nvcr.io/nvidia/isaac-sim:5.1.0@sha256:f3563cb2ba0c18af0b2fb321360dcb73a917b899f879e3213623d6bee484fa54
       # Present = this check GATES. Remove it and the same matrix runs as a sweep.
       oracle_script: verify/oracle.py
       pict_k: 2

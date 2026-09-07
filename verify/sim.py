@@ -101,8 +101,9 @@ def make_ros_driver():
 
     ASSUMPTION, NOT MEASURED: that `import rclpy` works inside `python.sh` on the
     stock image without sourcing a ROS environment. The platform measured the pieces
-    on its own derived image (`cv_infra/runner/ros_bridge.py`, 2026-07-08): the
-    bundled Jazzy site at `/isaac-sim/exts/isaacsim.ros2.bridge*/jazzy/rclpy` makes
+    on 2026-07-08, on its since-retired derived image (that image and the bridge code
+    that did the measuring no longer exist — the measurement is quoted, not citable):
+    the bundled Jazzy site at `/isaac-sim/exts/isaacsim.ros2.bridge*/jazzy/rclpy` makes
     rclpy importable, and the bridge's own shared libraries additionally need that
     ext's `lib` on `LD_LIBRARY_PATH` *at process start* (the loader snapshots it, so
     an in-process prepend is too late). Neither fact has been re-measured here, on
