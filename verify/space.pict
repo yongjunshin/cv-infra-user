@@ -1,0 +1,31 @@
+# verify/space.pict — the input space, in Microsoft PICT's own syntax.
+#
+# cv-infra expands this into a covering array and runs one case per row inside the
+# wallclock budget the request declares. It reads the axes as names and values;
+# what any of them MEAN is ours.
+#
+# Bind an axis to a field with `{param: <name>}` in the request. Every axis must be
+# bound by exactly one field and every bound name must appear here — an axis that
+# nothing reads is rejected rather than silently held constant.
+#
+# WHAT BELONGS HERE, AND WHAT DOES NOT. PICT picks the CELL; it is discrete and
+# combinatorial by construction, so it answers "which combinations must be tried".
+# A distribution (`{uniform: [...]}`) jitters WITHIN a cell across repeats, so it
+# answers "how much does this cell vary". The start pose below stays a distribution
+# for exactly that reason: we do not want three named start poses, we want the same
+# approach shaken a little on every repeat.
+
+# WHERE AN AXIS CAN BIND. `{param: <name>}` goes wherever the contract accepts a
+# randomizable scalar — goal x/y/yaw, initial_pose x/y/yaw, and each obstacle
+# group's count / x / y / yaw. It does NOT reach into the interface block: which
+# topics exist is wiring, not an input. So "run with the 2D lidars off" is a second
+# request document, not an axis in this one.
+
+desk_count:    0, 2, 5
+forklift_yaw:  0.0, 1.5708
+chair_y:       1.0, 2.0, 3.0
+goal_yaw:      1.5708, 3.1416
+
+# Arriving from the west means the chair sits between the robot and the goal, and
+# the lane is only wide enough for that at the far end.
+IF [goal_yaw] = 3.1416 THEN [chair_y] >= 2.0;
