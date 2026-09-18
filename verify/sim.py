@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/isaac-sim/python.sh
 """verify/sim.py — one verification case: drive the sample Nova Carter, log its pose.
 
 A STANDARD Isaac Sim standalone script. cv-infra never imports this file and knows

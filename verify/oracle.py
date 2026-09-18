@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/isaac-sim/python.sh
 """verify/oracle.py — turn one case's trajectory into a verdict.
 
 cv-infra runs this right after `verify/sim.py`, in the same image, with the SAME

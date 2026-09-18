@@ -11,7 +11,7 @@ PR에 Check · sticky 코멘트 · 아티팩트(케이스별 출력 zip + 시뮬
 
 | 파일 | 무엇 |
 |---|---|
-| `verify/sim.py` | **표준 Isaac standalone 스크립트.** 창고 씬(공식 ROS 2 내비게이션 샘플)을 열고 Nova Carter를 `--drive_v` / `--drive_t` / `--yaw_rate` 대로 몰면서 섀시의 **GT 포즈**를 `verify/out/trajectory.csv`에 기록한다. 플랫폼은 이 파일을 import하지 않는다 — 컨테이너 안에서 `python.sh`로 실행할 뿐이다. |
+| `verify/sim.py` | **표준 Isaac standalone 실행 entrypoint.** 창고 씬(공식 ROS 2 내비게이션 샘플)을 열고 Nova Carter를 `--drive_v` / `--drive_t` / `--yaw_rate` 대로 몰면서 섀시의 **GT 포즈**를 `verify/out/trajectory.csv`에 기록한다. 플랫폼은 이 파일을 import하지 않고 실행만 한다. |
 | `verify/param_space.pict` | **입력 공간**(Microsoft PICT 문법). 축 이름 = argv 플래그: `drive_v: 0.2` → `--drive_v=0.2`. 플랫폼이 여기서 페어와이즈(k=2) 커버링 배열을 만들어 케이스를 뽑는다. |
 | `verify/oracle.py` | **판정.** 시뮬 직후 같은 이미지·같은 argv로(GPU 없이) 돌아 `trajectory.csv`를 읽고 평평한 JSON dict 한 줄을 stdout에 낸다. |
 | `verify/out/.gitkeep` | 출력 디렉토리를 **커밋된 상태로** 두기 위한 파일 — 아래 참고. |
@@ -57,9 +57,9 @@ CI가 하는 일과 같다 — 저장소 루트에서:
 docker run --rm --gpus all \
   -e ACCEPT_EULA=Y -e PRIVACY_CONSENT=Y \
   -v "$PWD":/cv/checkout -w /cv/checkout \
-  --entrypoint /isaac-sim/python.sh \
+  --entrypoint /bin/sh \
   nvcr.io/nvidia/isaac-sim:5.1.0@sha256:f3563cb2ba0c18af0b2fb321360dcb73a917b899f879e3213623d6bee484fa54 \
-  verify/sim.py --drive_v=0.2 --drive_t=5 --yaw_rate=0.0
+  -lc 'exec "$0" "$@"' verify/sim.py --drive_v=0.2 --drive_t=5 --yaw_rate=0.0
 
 python3 verify/oracle.py --drive_v=0.2 --drive_t=5 --yaw_rate=0.0
 ```
