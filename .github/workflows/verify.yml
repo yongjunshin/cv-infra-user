@@ -9,7 +9,7 @@
 # The called workflow runs on the self-hosted GPU workstation and posts the result
 # back onto this PR as a Check Run + a sticky comment + artifacts.
 #
-# PIN (env reproducibility): `@minimal-verify` is a BRANCH ref, used only because the
+# PIN (env reproducibility): `@main` is the stable platform ref.
 # rewritten platform has no release tag yet. MOVE IT TO THE RELEASE TAG the moment one
 # exists — a branch ref can change underneath us, which is exactly what a pin prevents.
 #
@@ -33,7 +33,7 @@ jobs:
       checks: write # post the Check Run
       pull-requests: write # upsert the sticky comment
       contents: read
-    uses: yongjunshin/cv-infra-workspace/.github/workflows/verify.yml@minimal-verify
+    uses: yongjunshin/cv-infra-workspace/.github/workflows/verify.yml@main
     with:
       sim_script: verify/sim.py
       sim_input_space: verify/param_space.pict
