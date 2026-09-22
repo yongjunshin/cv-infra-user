@@ -4,8 +4,10 @@
 A STANDARD Isaac Sim standalone script. cv-infra never imports this file and knows
 nothing about what it means; per PICT case it runs, inside the stock Isaac image,
 
-    /isaac-sim/python.sh verify/sim.py --drive_v=0.2 --drive_t=5 --yaw_rate=0.0
+    verify/sim.py --drive_v=0.2 --drive_t=5 --yaw_rate=0.0
 
+through a `/bin/sh -lc 'exec "$0" "$@"'` wrapper — this file is the executable
+entrypoint and the shebang above, not the platform, picks the interpreter —
 with this repository checked out read-only at the working directory, `verify/out/`
 overlaid read-write, and `CV_SEED` in the environment. Which scene, which robot,
 how it is driven and what gets written are OURS — the platform only supplies the
