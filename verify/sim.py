@@ -11,7 +11,7 @@ overlaid read-write, and `CV_SEED` in the environment. Which scene, which robot,
 how it is driven and what gets written are OURS — the platform only supplies the
 runtime, the input space and the collection of `verify/out/`.
 
-EXIT CODE IS NOT A VERDICT (platform gotcha G-62): `SimulationApp.close()` ends the
+EXIT CODE IS NOT A VERDICT (platform gotcha): `SimulationApp.close()` ends the
 process with status 0 no matter what happened, and the stock `python.sh` squashes a
 non-zero status to 1. pass/fail is decided afterwards by `verify/oracle.py` reading
 `verify/out/trajectory.csv`. A non-zero exit here can therefore only mean "this case
@@ -309,7 +309,7 @@ def main() -> int:
         rc = EXIT_ERROR
     finally:
         # Standard close, no os._exit: this is also what makes the exit code useless
-        # as a verdict (G-62, see the module docstring).
+        # as a verdict (see the module docstring).
         simulation_app.close()
     return rc
 
