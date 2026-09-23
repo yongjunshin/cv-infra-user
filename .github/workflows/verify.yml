@@ -6,6 +6,12 @@
 # that output into a verdict. The platform is consumed as a contract + a workflow ref
 # ONLY — no relative-path reference into its source.
 #
+# WHAT IT VERIFIES: nine axes (sim_time_max / spawn_x / spawn_y / spawn_yaw / goal_x /
+# goal_y / obstacle_count / obstacle_kind / obstacle_scale) expand at k=2 into 15 cases.
+# Each teleports Nova Carter to the spawn pose, drops the case's warehouse props on the
+# spawn->goal segment, and drives. The verdict's two checks are `reached_goal` and
+# `collision_free` — both must be true for the case to pass.
+#
 # The called workflow runs on the self-hosted GPU workstation and posts the result
 # back onto this PR as a Check Run + a sticky comment + artifacts.
 #
@@ -50,3 +56,9 @@ jobs:
       oracle_script: verify/oracle.py
       pict_k: 2
       repeats: 1
+      # Wall-clock ceiling for the whole matrix, checked before each case is started.
+      # 15 cases; a warm clear-lane case is ~1 min (Isaac boots in ~10 s and the drive
+      # is ~10 sim-s), and the worst case is the sim_time_max=40 budget plus boot. 5400 s
+      # leaves room for a cold first case (asset download + shader cache) without letting
+      # a wedged matrix hold the GPU box all day.
+      budget: 5400

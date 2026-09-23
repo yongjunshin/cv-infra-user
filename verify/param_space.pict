@@ -1,30 +1,55 @@
-# verify/param_space.pict — this repository's input space, in Microsoft PICT syntax.
+# verify/param_space.pict — carter "go to goal through clutter" (DRAFT, 2026-09-23)
 #
-# cv-infra expands this into a pairwise (k=2) covering array and runs verify/sim.py
-# once per row, `repeats` times. It reads names and values; what any of them MEAN is
-# ours.
+# One row = one case. Every axis is a flag of verify/sim.py (`--name=value`, text) and
+# the script owns what the values MEAN. cv-infra expands this with PICT (k=2), runs the
+# script once per row inside the stock Isaac 5.1.0 image, collects verify/out/, and reads
+# verify/oracle.py's flat JSON by TYPE (bool = check, number = metric, str = note).
 #
-# AXIS NAME -> ARGV. Every axis becomes one flag: `drive_v: 0.2` is handed to the
-# script as `--drive_v=0.2`, in the order declared here. So a name must match
-# verify/sim.py's argparse exactly and must be CLI-flag-safe
-# (^[A-Za-z][A-Za-z0-9_-]*$, and never `help`/`h`). Values travel as text — the
-# script parses them.
+# GEOMETRY (sample scene carter_warehouse_navigation.usd, map frame, metres): the home
+# lane runs along +Y from (-6, -1); the strip x∈[-6.3,-5.7], y∈[-1, 5] is free floor
+# (MEASURED 2026-09-23: the P-controller drove (-6,-1)->(-6,3) in 9.38 sim-s, no contact).
+# Obstacles are dropped ON the spawn->goal segment at fixed fractions of its length
+# (0.40 and 0.65, so two never overlap) with an alternating lateral offset (+0.25 / -0.25),
+# i.e. their poses are a pure function of the axes: same row, same world, exact replay.
 #
-# THIS FILE IS THE COMMITTED ARRAY. The covering array is derived from this file at
-# every run, and each case is identified by a hash of its own axis assignment, so a
-# baseline follows a case across commits only as long as its values are untouched.
-# Editing a value (or a name) retires the old case and starts the new one without a
-# baseline — a rename is a deliberate act, not a formatting change.
-#
-# PICT picks the CELL: it is discrete and combinatorial, so it answers "which
-# combinations must be tried". "How much does one cell vary" is what `repeats`
-# answers instead.
+# COLLISION = any PhysX contact between ANY robot body (wheels included — MEASURED: the
+# wheels touch a box before the chassis does) and any spawned obstacle, read through
+# PhysxContactReportAPI on the obstacle prims. REACHED = within 0.3 m of the goal before
+# sim_time_max. Both are the oracle's bools; the sim's exit code is not a verdict.
 
-drive_v:   0.2, 0.4
-drive_t:   5, 10
-yaw_rate:  0.0, 0.3
+# --- time (sim seconds; the wall-clock cap is the platform's --case-timeout-s) --------
+# a clear 4 m lane takes ~9.4 s at 0.4 m/s
+sim_time_max:    20, 40
 
-# Turning eats the aisle. The warehouse lane the sample places the robot in is not
-# long enough to arc for 10 s, so a long turning run only ever proves that a rack is
-# where the map says it is.
-IF [yaw_rate] = 0.3 THEN [drive_t] <= 5;
+# --- spawn (map frame) ----------------------------------------------------------------
+# across the lane
+spawn_x:         -6.3, -6.0, -5.7
+spawn_y:         -1.0
+# pi/2 ± 0.3 rad: up the lane, ±17° off-axis
+spawn_yaw:       1.2708, 1.5708, 1.8708
+
+# --- goal -----------------------------------------------------------------------------
+goal_x:          -6.0
+# 4 m or 6 m up the lane
+goal_y:          3.0, 5.0
+
+# --- clutter --------------------------------------------------------------------------
+# 0 = the control case (must reach, must not touch)
+obstacle_count:  0, 1, 2
+# Stock warehouse props, colliders included, footprints MEASURED on this image:
+#   cardbox = SM_CardBoxA_01      0.70 x 0.50 x 0.50 m   (chest-height box)
+#   barrel  = SM_BarelPlastic_A_01 0.60 x 0.71 x 0.90 m   (tall, round)
+#   pallet  = SM_PaletteA_01      1.21 x 1.00 x 0.21 m   (low and wide: lidar-plane test)
+obstacle_kind:   cardbox, barrel, pallet
+# uniform USD scale; the collider scales with it (MEASURED: a 1.5x cardbox stops the
+# robot 0.175 m earlier = exactly the extra half-width)
+obstacle_scale:  0.75, 1.0, 1.5
+
+# --- constraints ----------------------------------------------------------------------
+# With no obstacle the kind/scale axes are meaningless — pin them so PICT spends no rows
+# on variants of one empty lane.
+IF [obstacle_count] = 0 THEN [obstacle_kind] = "cardbox";
+IF [obstacle_count] = 0 THEN [obstacle_scale] = 1.0;
+# A 1.5x pallet (1.8 m x 1.5 m) spans the lane wall to wall: a blocked corridor, not
+# clutter — a different question, kept out of this space.
+IF [obstacle_kind] = "pallet" THEN [obstacle_scale] <> 1.5;
