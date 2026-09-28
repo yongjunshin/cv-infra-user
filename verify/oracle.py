@@ -1,26 +1,28 @@
 #!/isaac-sim/python.sh
 """verify/oracle.py — turn one case's run into a verdict.
 
-cv-infra runs this right after `verify/sim.py`, in the same image, with the SAME
-argv and no GPU. The last line of stdout that parses as a flat JSON object is the
-case's verdict, and the platform reads TYPES, not names:
+cv-infra runs this right after `verify/sim.py`, in the same image, with the SAME argv and
+no GPU. The last line of stdout that parses as a flat JSON object is the case's verdict,
+and the platform reads TYPES, not names:
 
     bool   a check   — the case passes when every bool is true
     number a metric  — compared against the baseline across commits, never gates
     null   unknown   — not a failure, just excluded from the ratio
     str    a note
 
-The question here is "did the robot get to the goal without touching anything?", so
-the two bools are `reached_goal` and `collision_free`.
+The question is "did the robot's software get it to the goal without running into
+anything?", so the two bools are `reached_goal` and `collision_free`. "Anything" is
+literal: the harness hears every contact of every robot body, and only the floor carrying
+the robot is excluded — a prop, a shelf or a wall all count.
 
 POLARITY (do not "simplify" this to a `collided` key): the platform passes a case when
 EVERY bool is true, so a check has to be named for the GOOD outcome. A key named
 `collided` would turn the gate inside out — green exactly when the robot crashed. The
-collision itself is in the note, which names the first contact.
+collision itself is in the note, which names the first one.
 
 A non-zero exit means the case ERRORed (no verdict), which is different from a robot
-that failed: a missing `run.json`/`contacts.json` means the sim did not get far enough
-to have an opinion. A missing `trajectory.csv` only costs the two trajectory metrics.
+that failed: a missing `run.json`/`contacts.json` means the sim did not get far enough to
+have an opinion. A missing `trajectory.csv` only costs the two trajectory metrics.
 
 stdlib only, so it also runs on a plain laptop python3.
 """
@@ -36,25 +38,21 @@ OUT_DIR = os.path.join("verify", "out")
 RUN_JSON = os.path.join(OUT_DIR, "run.json")
 CONTACTS_JSON = os.path.join(OUT_DIR, "contacts.json")
 TRAJECTORY = os.path.join(OUT_DIR, "trajectory.csv")
+SLOTS = ("a", "b", "c", "d", "e")
 
 
 def parse_args() -> argparse.Namespace:
-    """Same nine axes as the sim, tolerantly parsed (the platform replays the whole argv).
+    """Same seven axes as the sim, tolerantly parsed (the platform replays the whole argv).
 
     The verdict is read out of `run.json`, which records the axes the sim actually ran;
     these flags exist so a drifted argv contract fails here too, and so the two can be
     cross-checked (a stale `verify/out/` from an earlier local run is the usual cause).
     """
-    p = argparse.ArgumentParser(description="verdict for one carter go-to-goal case")
-    p.add_argument("--sim_time_max", type=float, required=True)
-    p.add_argument("--spawn_x", type=float, required=True)
-    p.add_argument("--spawn_y", type=float, required=True)
-    p.add_argument("--spawn_yaw", type=float, required=True)
-    p.add_argument("--goal_x", type=float, required=True)
-    p.add_argument("--goal_y", type=float, required=True)
-    p.add_argument("--obstacle_count", type=int, required=True)
-    p.add_argument("--obstacle_kind", required=True)
-    p.add_argument("--obstacle_scale", type=float, required=True)
+    p = argparse.ArgumentParser(description="verdict for one carter straight-to-goal case")
+    p.add_argument("--start", required=True)
+    p.add_argument("--goal", required=True)
+    for slot in SLOTS:
+        p.add_argument(f"--slot_{slot}", required=True)
     args, _unknown = p.parse_known_args()
     return args
 
@@ -67,8 +65,8 @@ def read_json(path: str) -> dict:
 def trajectory_metrics(path: str):
     """(path length [m], smallest clearance [m]) — either may be None.
 
-    `min_clearance` is empty in every row of a case with no obstacles, which is an
-    honest `null` (unknown), not a zero.
+    `min_clearance` is empty in every row of a case with no props, which is an honest
+    `null` (unknown), not a zero.
     """
     try:
         with open(path, newline="") as handle:
@@ -78,8 +76,8 @@ def trajectory_metrics(path: str):
     if not rows:
         return None, None
     length = 0.0
-    # strict=False on purpose: the offset pairing is the point, so the two are never
-    # the same length.
+    # strict=False on purpose: the offset pairing is the point, so the two are never the
+    # same length.
     for previous, current in zip(rows, rows[1:], strict=False):
         length += math.hypot(
             float(current["x"]) - float(previous["x"]),
@@ -91,35 +89,23 @@ def trajectory_metrics(path: str):
 
 def axes_mismatch(args: argparse.Namespace, axes: dict) -> list:
     """Axis names where argv and the recorded run disagree (empty = they match)."""
-    bad = []
-    for key, value in vars(args).items():
-        recorded = axes.get(key)
-        if isinstance(value, float) and isinstance(recorded, (int, float)):
-            if abs(float(recorded) - value) > 1e-9:
-                bad.append(key)
-        elif recorded != value:
-            bad.append(key)
-    return sorted(bad)
+    return sorted(key for key, value in vars(args).items() if axes.get(key) != value)
 
 
 def describe(run: dict, contacts: dict) -> str:
-    """The note: what touched what, and what was standing in the lane."""
-    events = contacts.get("events") or []
-    if events:
-        first = events[0]
-        touch = (
-            f"first contact {first.get('body')} <-> {first.get('kind')} "
-            f"#{first.get('obstacle')} at t={float(first.get('t', 0.0)):.2f}s"
-        )
-    elif contacts.get("first_contact_t") is not None:
-        touch = f"first contact at t={float(contacts['first_contact_t']):.2f}s (body unrecorded)"
+    """The note: how it ended, what it hit first, and what stood where."""
+    first = contacts.get("first_collision")
+    if first:
+        hit = f"first collision {first.get('body')} <-> {first.get('label')} at t={float(first.get('t', 0.0)):.2f}s"
     else:
-        touch = "no obstacle contact"
-    obstacles = run.get("obstacles") or []
-    listing = ", ".join(
-        f"{ob['kind']} x{ob['scale']} @({ob['x']:.2f}, {ob['y']:.2f})" for ob in obstacles
+        hit = "no collision"
+    props = ", ".join(f"{ob['slot']}={ob['kind']}" for ob in run.get("obstacles") or []) or "none"
+    start, goal = run.get("start") or {}, run.get("goal") or {}
+    sha = ((run.get("robot_sw") or {}).get("sha256") or "")[:12]
+    return (
+        f"{start.get('name')}->{goal.get('name')}: ended by {run.get('end_reason')}; {hit}; "
+        f"props {props}; robot_sw {sha}"
     )
-    return f"{touch}; obstacles: {listing or 'none'}"
 
 
 def main() -> int:
@@ -133,7 +119,7 @@ def main() -> int:
         return 1
 
     path_len, clearance = trajectory_metrics(TRAJECTORY)
-    collided = bool(contacts.get("event_count")) or contacts.get("first_contact_t") is not None
+    collided = bool(contacts.get("collision_event_count")) or contacts.get("first_collision") is not None
     note = describe(run, contacts)
     drifted = axes_mismatch(args, run.get("axes") or {})
     if drifted:

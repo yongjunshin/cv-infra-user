@@ -1,22 +1,62 @@
 # cv-infra-user (carter)
 
 cv-infra **소비자 예시**. "로봇 SW 프로젝트가 cv-infra를 실제로 쓰면 저장소가 어떻게 생기나"를
-보여주는 최소 형태 — 파일 4개와 워크플로 1개가 전부다.
+보여주는 최소 형태 — 로봇 SW 파일 1개, 검증 파일 3개, 워크플로 1개가 전부다.
 
-검증하는 질문은 하나다: **"창고 통로에 잡동사니가 놓였을 때, 로봇이 아무것도 건드리지 않고
-목표점까지 가는가?"** 케이스마다 로봇을 스폰 포즈로 텔레포트하고, 스폰→목표 직선 위에 창고
-소품을 `obstacle_count`개 세운 뒤, 주행시키고, **닿았는지 / 도착했는지**를 기록한다.
+검증하는 질문은 하나다: **"이 로봇 SW가, 이 배치에서, 아무것도 들이받지 않고 목표점까지 가는가?"**
+케이스마다 로봇을 세 출발점 중 하나에 세우고, 세 목표점 중 하나를 주고, 고정된 슬롯 다섯 곳에
+창고 소품을 놓거나 비운 뒤, **로봇 SW가 모는 대로** 두고 본다.
 
 PR을 열면 GitHub Actions가 플랫폼의 재사용 워크플로를 호출하고, 플랫폼은 GPU 워크스테이션의
-Isaac Sim에서 아래 `verify/sim.py`를 **입력 조합마다 한 번씩** 돌린 뒤 `verify/oracle.py`의 판정을
+Isaac Sim에서 `verify/sim.py`를 **입력 조합마다 한 번씩** 돌린 뒤 `verify/oracle.py`의 판정을
 PR에 Check · sticky 코멘트 · 아티팩트(케이스별 출력 zip + 시뮬 로그)로 돌려준다.
+
+## 로봇 SW와 테스트 하네스는 분리돼 있다
+
+| 폴더 | 누구의 것 | 무엇 |
+|---|---|---|
+| `robot_sw/` | **로봇** — 검증 대상(SuT) | `straight_driver.py`: 이 로봇의 주행 능력 **전부**. 목표를 한 번 받고, 매 제어 주기에 **자기 자세만** 받아 `(v, w)`를 낸다. 목표 쪽으로 제자리 회전한 뒤 **직진**하고, 도착하면 선다. 센서도 지도도 없으므로 길 위에 뭐가 있으면 **그대로 들이받는다**. |
+| `verify/` | **테스트** — 하네스 | 세계를 만들고(출발·목표·소품), 로봇 SW에 목표와 자세를 건네고, 그 `(v, w)`를 바퀴 회전으로 바꾸고, **지켜보고 기록할 뿐**이다. 조향·회피·감속·경로계획을 하지 않고, 로봇 SW에 소품 위치를 주지 않는다. |
+
+그래서 빨간 케이스는 **로봇 SW의 능력이 그 배치에 못 미친 것**이다. 로봇을 더 똑똑하게 만드는 일
+(인식·회피·플래너)은 `robot_sw/`만 고치는 PR이고, 입력 공간·하네스·오라클은 그대로 같은 질문을
+다시 묻는다 — 개선되면 같은 케이스들이 초록으로 바뀌는 것이 CI에 그대로 보인다. 판정마다
+`run.json`에 **검증한 로봇 SW 파일의 sha256**이 남는다.
+
+## 레이아웃 — 출발 3 · 목표 3 · 소품 슬롯 5 (map frame, m)
+
+```
+ G1 (-7.5, 6.0)            G2 (-5.0, 6.0)            G3 (-2.5, 6.0)        목표 행
+
+ a (-7.5,2.5)   b (-6.25,2.5)   c (-5.0,2.5)   d (-3.75,2.5)   e (-2.5,2.5)    슬롯 행
+
+ S1 (-7.5,-1.0)            S2 (-5.0,-1.0)            S3 (-2.5,-1.0)        출발 행(+y를 향함)
+```
+
+- 이 구역은 **빈 바닥**이다: 씬의 nav2 지도가 전 구간 1.2 m 이상의 여유를 보이고, 출발→목표 직선
+  주행이 바닥 말고는 아무것도 건드리지 않았다(실측).
+- 어느 출발에서 어느 목표로 가든 **직선은 슬롯 행을 정확히 한 슬롯의 중심에서 지나고**, 나머지 슬롯
+  소품과는 0.27 m 이상 떨어진다. 그래서 직진밖에 못 하는 로봇은 **자기 직선 위의 그 슬롯이 비었을 때만**
+  통과한다 — 운 좋은 배치는 통과, 아니면 충돌:
+
+  | 슬롯 | 그 슬롯을 지나는 직선 |
+  |---|---|
+  | a | S1→G1 |
+  | b | S1→G2, S2→G1 |
+  | c | S1→G3, S2→G2, S3→G1 |
+  | d | S2→G3, S3→G2 |
+  | e | S3→G3 |
+
+- 슬롯 내용물: `empty` · `cardbox`(SM_CardBoxA_01, 0.70×0.50×0.50 m) · `barrel`
+  (SM_BarelPlastic_A_01, 0.60×0.71×0.90 m). 둘 다 정적 콜라이더라 밀려나지 않는다.
 
 ## 파일
 
 | 파일 | 무엇 |
 |---|---|
-| `verify/sim.py` | **표준 Isaac standalone 실행 entrypoint.** 창고 씬(공식 ROS 2 내비게이션 샘플)을 열고, 로봇을 `--spawn_*`로 텔레포트하고, `--obstacle_*`대로 소품을 스폰하고, 파일 안의 ~60줄 컨트롤러로 `--goal_*`까지 몰면서 `verify/out/`에 **trajectory.csv · contacts.json · run.json** 세 개를 쓴다. 플랫폼은 이 파일을 import하지 않고 실행만 한다. |
-| `verify/param_space.pict` | **입력 공간**(Microsoft PICT 문법). 축 이름 = argv 플래그: `goal_y: 3.0` → `--goal_y=3.0`. 플랫폼이 여기서 페어와이즈(k=2) 커버링 배열을 만들어 **15 케이스**를 뽑는다. |
+| `robot_sw/straight_driver.py` | **검증 대상.** 위 표 참고. stdlib만 쓰고 Isaac을 모른다. |
+| `verify/sim.py` | **표준 Isaac standalone 실행 entrypoint = 테스트 하네스.** 창고 씬(공식 ROS 2 내비게이션 샘플)을 열고, 로봇을 `--start`로 텔레포트하고, `--slot_*`대로 소품을 놓고, `robot_sw/`의 드라이버에 `--goal`을 준 뒤 매 물리 스텝 자세를 건네고 그 명령을 바퀴에 전한다. 목표 0.30 m 이내 도착 · 첫 충돌 1 s 뒤 · 30 sim-s 중 먼저 오는 것에서 끝내고 `verify/out/`에 **trajectory.csv · contacts.json · run.json**을 쓴다. |
+| `verify/param_space.pict` | **입력 공간**(Microsoft PICT 문법). 축 7개(`start`·`goal`·`slot_a…e`) = argv 플래그: `start: S1` → `--start=S1`. 플랫폼이 페어와이즈(k=2)로 **16 케이스**를 뽑는다 — 모든 출발×목표 쌍이 한 번 이상 나온다. |
 | `verify/oracle.py` | **판정.** 시뮬 직후 같은 이미지·같은 argv로(GPU 없이) 돌아 위 세 파일을 읽고 평평한 JSON dict 한 줄을 stdout에 낸다. stdlib만 쓴다. |
 | `verify/out/.gitkeep` | 출력 디렉토리를 **커밋된 상태로** 두기 위한 파일 — 아래 참고. |
 | `.github/workflows/verify.yml` | 잡 하나(`uses: …@…`)와 `with:` 입력 8개. 이 저장소가 유지하는 통합 표면 전부. |
@@ -34,13 +74,13 @@ PR에 Check · sticky 코멘트 · 아티팩트(케이스별 출력 zip + 시뮬
 
 | 키 | 타입 | 뜻 |
 |---|---|---|
-| `reached_goal` | 체크 | 예산 안에 목표점 0.3 m 이내로 들어왔나 |
-| `collision_free` | 체크 | 로봇의 **어떤 바디도** 소품에 닿지 않았나 |
+| `reached_goal` | 체크 | 30 sim-s 안에 목표점 0.3 m 이내로 들어왔나 |
+| `collision_free` | 체크 | 로봇의 **어떤 바디도** 바닥 말고 **아무것에도**(소품·선반·벽) 닿지 않았나 |
 | `time_to_goal_s` | 지표/`null` | 도착까지 sim 초. 못 갔으면 `null`(실패는 `reached_goal`이 말한다) |
 | `final_dist_m` | 지표 | 종료 시점의 목표점까지 거리 |
-| `min_clearance_m` | 지표/`null` | 주행 중 가장 가까웠던 소품 표면까지 거리. 소품이 없으면 `null` |
+| `min_clearance_m` | 지표/`null` | 주행 중 로봇 축 중심에서 가장 가까운 소품 외곽까지 거리. 소품이 없으면 `null` |
 | `path_len_m` | 지표/`null` | 실제 주행 경로 길이. `trajectory.csv`가 없으면 `null` |
-| `note` | 메모 | 첫 접촉("wheel_left ↔ cardbox #0 at t=4.08s")과 그 케이스의 소품 목록 |
+| `note` | 메모 | 끝난 이유(reached·collision·budget), 첫 충돌("wheel_left ↔ slot c cardbox at t=7.10s"), 소품 배치, 로봇 SW sha256 앞 12자 |
 
 > ⚠ **체크 키는 "좋은 쪽"으로 이름 짓는다.** 플랫폼은 **모든 bool이 true**여야 pass로 본다. 그래서
 > `collided`(닿았다)가 아니라 `collision_free`(안 닿았다)다 — 전자로 쓰면 로봇이 **박았을 때만
@@ -68,8 +108,9 @@ CI가 돌린 것과 다른 이미지가 된다.
 
 ## 로컬에서 같은 케이스 돌리기
 
-CI가 하는 일과 같다 — 저장소 루트에서. 아래 아홉 개 플래그는 `verify/param_space.pict`가 펼쳐지는
-15행 중 **한 행 그대로**다(통로를 6 m 올라가며 플라스틱 배럴 하나를 피하는 케이스):
+CI가 하는 일과 같다 — 저장소 루트에서. 아래 일곱 개 플래그는 `verify/param_space.pict`가 펼쳐지는
+16행 중 **한 행 그대로**다(S2에서 G2로 곧장 가는데 그 직선 위 슬롯 c에 카드박스가 있는 케이스 —
+이 로봇은 거기서 부딪힌다):
 
 ```bash
 docker run --rm --gpus all \
@@ -78,17 +119,15 @@ docker run --rm --gpus all \
   --entrypoint /bin/sh \
   nvcr.io/nvidia/isaac-sim:5.1.0@sha256:f3563cb2ba0c18af0b2fb321360dcb73a917b899f879e3213623d6bee484fa54 \
   -lc 'exec "$0" "$@"' verify/sim.py \
-  --sim_time_max=40 --spawn_x=-5.7 --spawn_y=-1.0 --spawn_yaw=1.5708 \
-  --goal_x=-6.0 --goal_y=5.0 --obstacle_count=1 --obstacle_kind=barrel --obstacle_scale=1.0
+  --start=S2 --goal=G2 --slot_a=empty --slot_b=cardbox --slot_c=cardbox --slot_d=cardbox --slot_e=empty
 
 python3 verify/oracle.py \
-  --sim_time_max=40 --spawn_x=-5.7 --spawn_y=-1.0 --spawn_yaw=1.5708 \
-  --goal_x=-6.0 --goal_y=5.0 --obstacle_count=1 --obstacle_kind=barrel --obstacle_scale=1.0
+  --start=S2 --goal=G2 --slot_a=empty --slot_b=cardbox --slot_c=cardbox --slot_d=cardbox --slot_e=empty
 ```
 
 `ACCEPT_EULA`가 없으면 `sim.py`는 부팅 전에 거부한다(exit 3). 컨테이너에는 디스플레이가 없으므로
 기본은 headless고, `--gui`는 데스크톱에 설치된 Isaac에서 볼 때만 쓴다(`./python.sh verify/sim.py
---gui --sim_time_max=40 …`). CI에서 GUI로 부팅하면 행이나 크래시로 끝난다.
+--gui --start=S2 …`). CI에서 GUI로 부팅하면 행이나 크래시로 끝난다.
 
 ## `verify/out/.gitkeep`이 필요한 이유
 
@@ -97,25 +136,20 @@ python3 verify/oracle.py \
 git은 빈 디렉토리를 추적하지 않으므로 `.gitkeep`을 커밋해 둔다. 산출물 자체는 `.gitignore`가
 막는다.
 
-## 구동 경로와 "로봇 SW"에 대한 정직한 메모
+## 하네스가 하는 일과 하지 않는 일 — 정직한 메모
 
-**ROS 2 경로는 없다.** `sim.py`는 휠 조인트 속도를 직접 명령한다(`set_joint_velocities`). 이전 버전은
-번들 `rclpy`로 `/cmd_vel`을 발행하는 경로를 먼저 시도했지만, CI 실측에서 **stock 이미지의 번들
-브리지는 `setup_ros_env.sh` 없이는 뜨지 않는다**는 것이 확인됐고, 이 예시에는 ROS가 필요하지 않다.
-씬에 들어 있는 ROS 2 OmniGraph들은 그대로 두되 아무도 구독하지 않은 채 논다.
-
-휠 반지름 `0.14 m`와 트레드 `0.413 m`는 **공표값 추정이 아니라 씬 자신의 authored 값**이다 —
-`carter_warehouse_navigation.usd` 안의 `DifferentialController` 노드에서 읽었다(실측 2026-09-23).
-`(v, w)`를 좌·우 휠 속도로 바꾸는 데 이 두 값만 쓴다.
-
-여기서 **검증 대상("로봇 SW")은 `sim.py` 안의 ~60줄 컨트롤러**다. 목표 방위각 P 제어 +
-**소품 위치를 이미 아는 상태**에서의 반발 조향(지도 기반, 인식 없음)이 전부인 대역(stand-in)이다.
-그래서:
-
-- 케이스가 빨간 건 **그 컨트롤러가 실패한 것**이지 플랫폼이나 Isaac의 문제가 아니다. 1.0배 박스
-  하나는 비켜 가도 1.5배 배럴 두 개는 못 피할 수 있고, 그 편차를 보는 게 이 검증의 목적이다.
-- 실제 로봇 SW(nav2 등)를 붙이는 건 이 컨트롤러 블록을 들어내고 그 자리에 붙이는 일이다.
-  입력 공간·오라클·수집 계약은 그대로 쓴다.
-- 접촉 판정은 `ContactSensor`가 아니라 소품 프림에 건 **PhysX contact report**다 — 섀시보다 **휠이
-  먼저 닿기** 때문에 섀시 센서는 박스를 놓쳤다(실측). 어떤 바디가 무엇에 닿았는지는
-  `contacts.json`과 `note`에 이름으로 남는다.
+- **로봇 SW가 받는 것은 목표와 자기 자세뿐이다.** 자세는 시뮬레이터의 참값(완벽한 자기위치 추정
+  가정)이다. 소품 위치·지도·센서 데이터는 주지 않는다.
+- **하네스가 대신 하는 것은 로봇의 몸이다.** `(v, w)`를 좌·우 바퀴 속도로 바꾸는 휠 반지름
+  `0.14 m`·트레드 `0.413 m`, 그리고 몸이 강제하는 속도 상한(1.0 m/s, 1.2 rad/s)은 **씬 자신의
+  `DifferentialController` 노드에 authored된 값**이다. 로봇 SW가 무엇을 명령하든 몸은 그 한계 안에서만
+  움직인다.
+- **충돌은 로봇 쪽에서 듣는다.** 로봇의 모든 강체에 PhysX contact report를 걸고, 접촉 법선이 수직인
+  것(|n_z| ≥ 0.5 — 로봇을 받치는 바닥)만 빼고 **전부 충돌**로 센다. 실측: 바닥 접촉은 정확히
+  |n_z| = 1.000, 바퀴가 카드박스에 닿은 접촉은 0.000. 그래서 소품뿐 아니라 선반·벽도 잡히고, 씬에
+  무엇이 있는지 목록을 알 필요가 없다. (섀시 `ContactSensor`는 **바퀴가 먼저 닿아** 박스를 놓쳤다 — 실측.)
+- **에피소드 규칙은 테스트의 것이다.** 첫 충돌 1 s 뒤에 끝낸다(판정은 이미 정해졌고, 직진 로봇은 거기서
+  계속 밀기만 한다). 예산 30 sim-s는 가장 긴 직선(8.6 m, ~23 s)을 덮는다.
+- **ROS 2는 쓰지 않는다.** 씬의 ROS 2 OmniGraph들은 그대로 두되 아무도 구독하지 않은 채 논다. 로봇 SW를
+  ROS 2 노드(`/odom` → `/cmd_vel`)로 바꾸는 것도 `robot_sw/`의 일이다 — 그때는 번들 브리지가
+  `setup_ros_env.sh` 없이는 뜨지 않는다는 점(실측)만 챙기면 된다.
