@@ -16,16 +16,16 @@ read-write, and `CV_SEED` in the environment.
 WHAT ONE CASE IS: build the world the axes name (the robot on one of three start
 points, one of three goals, a stock warehouse prop in each occupied slot of a fixed
 row), hand the goal to the robot's software, and then only WATCH: every physics step
-the harness gives `robot_sw/straight_driver.py` its pose, turns the (v, w) it answers
-into wheel spin, and records where the robot went and what it touched. The episode ends
-when the robot is within 0.30 m of the goal, 1 s after its first collision, or after
-SIM_TIME_MAX_S sim-seconds. `verify/oracle.py` turns the three files this writes into
-{reached_goal, collision_free, …}.
+the harness gives `robot_sw/driver.py` its pose and the latest scan of its lidar, turns
+the (v, w) it answers into wheel spin, and records where the robot went and what it
+touched. The episode ends when the robot is within 0.30 m of the goal, 1 s after its
+first collision, or after SIM_TIME_MAX_S sim-seconds. `verify/oracle.py` turns the three
+files this writes into {reached_goal, collision_free, …}.
 
-THE HARNESS ADDS NO INTELLIGENCE. It does not steer, avoid, slow down or plan; the
-robot software gets the goal and its own pose and nothing else — in particular not the
-obstacle positions. What the robot can do is what `robot_sw/` can do, and a red case is
-that software's result, not this file's.
+THE HARNESS ADDS NO INTELLIGENCE. It does not steer, avoid, slow down or plan. The robot
+software gets the goal once, then its pose and what its own lidar measures — never the
+obstacle positions; its map is its own (robot_sw/maps/). What the robot can do is what
+`robot_sw/` can do, and a red case is that software's result, not this file's.
 
 EXIT CODE IS NOT A VERDICT (platform gotcha): `SimulationApp.close()` ends the process
 with status 0 no matter what happened, and the stock `python.sh` squashes a non-zero
@@ -67,9 +67,10 @@ ROBOT_CANDIDATES = (
 CHASSIS_CHILD = "chassis_link"
 
 # The software under test — the robot's, not the harness's (see robot_sw/). Loaded from
-# the checkout by path, and its sha256 goes into run.json so every verdict names the
-# exact robot code it judged.
-ROBOT_SW = os.path.join("robot_sw", "straight_driver.py")
+# the checkout by path: `Driver(goal_x, goal_y)` once, then `step(x, y, yaw, scan)`
+# every physics step. Its sha256 goes into run.json so every verdict names the exact
+# robot code it judged.
+ROBOT_SW = os.path.join("robot_sw", "driver.py")
 
 # --------------------------------------------------------------------------------------
 # The layout. Map frame (= world frame; the scene's nav2 map says so), metres. The area
@@ -114,6 +115,17 @@ WHEEL_RADIUS_M = 0.14
 WHEEL_TRACK_M = 0.413
 MAX_LINEAR_MS = 1.0
 MAX_ANGULAR_RADS = 1.2
+
+# The robot's 2D lidar — a sensor, i.e. body, not behaviour. Modelled as PhysX raycasts
+# from the wheel axle at LIDAR_Z_M (one horizontal plane: it sees the cardbox (0.50 m
+# tall), the barrel (0.90 m), shelves and walls, and never the floor), robot frame,
+# LIDAR_BEAMS over 360 degrees, LIDAR_HZ. The rays start inside the chassis, so hits on
+# the robot's own colliders are skipped (MEASURED: otherwise every beam returns 0 m on
+# the chassis). MEASURED cost: 2-3 ms per 360-beam scan.
+LIDAR_Z_M = 0.25
+LIDAR_BEAMS = 360
+LIDAR_RANGE_M = 10.0
+LIDAR_HZ = 10.0
 
 # The episode — the test's rules, not the robot's.
 SIM_TIME_MAX_S = 30.0  # the longest line (8.6 m) takes ~23 s at the driver's 0.4 m/s
@@ -221,6 +233,41 @@ def load_robot_sw(path: str):
     return module, digest
 
 
+def make_lidar(robot_path: str, scene_query, float3):
+    """The lidar twin: (x, y, yaw, stamp) -> a LaserScan-shaped dict in the robot frame.
+
+    `scene_query` is omni.physx's scene-query interface and `float3` is `carb.Float3`,
+    both passed IN so this stays a stdlib function at module scope (see ORDERING).
+    """
+    prefix = robot_path + "/"
+    increment = 2.0 * math.pi / LIDAR_BEAMS
+
+    def scan(x: float, y: float, yaw: float, stamp: float) -> dict:
+        ranges = []
+        for i in range(LIDAR_BEAMS):
+            angle = yaw - math.pi + i * increment
+            nearest = [math.inf]
+
+            def on_hit(hit, nearest=nearest) -> bool:
+                if not hit.collision.startswith(prefix) and hit.distance < nearest[0]:
+                    nearest[0] = hit.distance
+                return True
+
+            scene_query.raycast_all(
+                float3(x, y, LIDAR_Z_M), float3(math.cos(angle), math.sin(angle), 0.0), LIDAR_RANGE_M, on_hit
+            )
+            ranges.append(nearest[0])
+        return {
+            "stamp": round(stamp, 4),
+            "angle_min": -math.pi,
+            "angle_increment": increment,
+            "range_max": LIDAR_RANGE_M,
+            "ranges": ranges,
+        }
+
+    return scan
+
+
 def label_of(prim_path: str, obstacles: list[dict]) -> str:
     """What the robot touched, in the words of the case: `slot c cardbox` or the prim path."""
     if prim_path.startswith(OBSTACLE_PREFIX):
@@ -308,13 +355,14 @@ def run(simulation_app, args: argparse.Namespace) -> None:
     """Build the case's world, let the robot software drive, write verify/out/."""
     # Isaac imports are legal only here — after SimulationApp booted. numpy included:
     # the one we must use is the image's, which the boot puts on the path.
+    import carb  # noqa: PLC0415
     import numpy as np  # noqa: PLC0415
     import omni.usd  # noqa: PLC0415
     from isaacsim.core.api import World  # noqa: PLC0415
     from isaacsim.core.prims import SingleArticulation, SingleXFormPrim  # noqa: PLC0415
     from isaacsim.core.utils.stage import is_stage_loading  # noqa: PLC0415
     from isaacsim.storage.native import get_assets_root_path  # noqa: PLC0415
-    from omni.physx import get_physx_simulation_interface  # noqa: PLC0415
+    from omni.physx import get_physx_scene_query_interface, get_physx_simulation_interface  # noqa: PLC0415
     from pxr import Gf, PhysicsSchemaTools, PhysxSchema, Usd, UsdGeom, UsdPhysics  # noqa: PLC0415
 
     start_x, start_y = STARTS[args.start]
@@ -385,15 +433,20 @@ def run(simulation_app, args: argparse.Namespace) -> None:
     if not left or not right:
         raise RuntimeError(f"drive wheels not found on {robot_path!r}; dofs={names}")
 
-    # The mission: the goal, once. From here on the harness only reports the pose.
-    driver = robot_sw.StraightDriver(*goal)
+    # The mission: the goal, once. From here on the harness only reports the pose and
+    # what the robot's own lidar measures.
+    driver = robot_sw.Driver(*goal)
+    lidar = make_lidar(robot_path, get_physx_scene_query_interface(), carb.Float3)
     dt = float(world.get_physics_dt())
+    scan_every = max(1, round(1.0 / (LIDAR_HZ * dt)))
     log(f"episode: budget {SIM_TIME_MAX_S} sim-s = {int(SIM_TIME_MAX_S / dt)} steps of {dt:.4f}s")
 
     samples: list[tuple] = []
     reached_t = None
     end_reason = "budget"
     t = 0.0
+    step = 0
+    scan = None
     try:
         while t < SIM_TIME_MAX_S:
             contacts["t"] = t
@@ -411,8 +464,10 @@ def run(simulation_app, args: argparse.Namespace) -> None:
                 end_reason = "collision"
                 samples.append((t, x, y, yaw, 0.0, 0.0, distance, clearance))
                 break
+            if step % scan_every == 0:
+                scan = lidar(x, y, yaw, t)
             # The robot software decides; the body only enforces its own speed limits.
-            v, w = driver.step(x, y, yaw)
+            v, w = driver.step(x, y, yaw, scan)
             v = max(-MAX_LINEAR_MS, min(MAX_LINEAR_MS, float(v)))
             w = max(-MAX_ANGULAR_RADS, min(MAX_ANGULAR_RADS, float(w)))
             samples.append((t, x, y, yaw, v, w, distance, clearance))
@@ -424,6 +479,7 @@ def run(simulation_app, args: argparse.Namespace) -> None:
             robot.set_joint_velocities(velocities)
             world.step(render=True)
             t += dt
+            step += 1
     finally:
         robot.set_joint_velocities(np.zeros(len(names)))
 
@@ -452,6 +508,7 @@ def run(simulation_app, args: argparse.Namespace) -> None:
             "goal": {"name": args.goal, "x": goal[0], "y": goal[1]},
             "obstacles": obstacles,
             "robot_sw": {"path": ROBOT_SW, "sha256": robot_sw_sha},
+            "lidar": {"z_m": LIDAR_Z_M, "beams": LIDAR_BEAMS, "range_m": LIDAR_RANGE_M, "hz": LIDAR_HZ},
             "reached": reached_t is not None,
             "time_to_goal_s": None if reached_t is None else round(reached_t, 4),
             "collided": contacts["first_collision"] is not None,

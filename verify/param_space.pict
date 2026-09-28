@@ -20,8 +20,11 @@
 #   slot a: S1->G1 · slot b: S1->G2, S2->G1 · slot c: S1->G3, S2->G2, S3->G1
 #   slot d: S2->G3, S3->G2 · slot e: S3->G3
 # So a robot that can only drive straight passes exactly when the one slot on its line
-# is empty — some layouts are lucky, some are not. A robot that could avoid would pass
-# more of them; that difference is what this space measures.
+# is empty — some layouts are lucky, some are not. A robot that can avoid passes more of
+# them, but only if it finds a gap: two occupied neighbours leave 0.55-0.65 m between
+# them, too narrow for the carter (0.48 m wide) to pass with any margin, so the way
+# around is an empty slot or the end of the row. That difference is what this space
+# measures.
 #
 # CASE IDENTITY is a hash of a row's own assignment: a baseline follows a case across
 # commits only as long as its values are untouched. Renaming a value is a deliberate act.
