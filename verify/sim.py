@@ -139,6 +139,11 @@ COLLISION_TAIL_S = 1.0  # keep watching this long after the first collision, the
 # anything flatter is the robot running into something. MEASURED: floor contacts are
 # exactly |nz| = 1.000, the wheels against a cardbox exactly 0.000.
 SUPPORT_NZ = 0.5
+# A collider whose top is this close to the floor IS floor, whatever the normal says.
+# MEASURED (CI run 36713925018, case S2->G1): the scene's floor decals ("KEEP CLEAR",
+# stripes) are flat planes 0.1 mm up with a collider, and a caster rolling over a decal's
+# EDGE reports |nz| 0.43-0.50 — a floor sticker counted as a crash.
+FLOOR_LEVEL_M = 0.01
 
 # The top-view camera — part of the test rig, not of the robot. A pinhole straight down
 # from TOPCAM_HEIGHT_M (an identity-rotated USD camera looks along -Z with +X right and +Y
@@ -297,13 +302,14 @@ def label_of(prim_path: str, obstacles: list[dict]) -> str:
     return prim_path
 
 
-def make_contact_log(robot_path: str, obstacles: list[dict], to_sdf_path):
+def make_contact_log(robot_path: str, obstacles: list[dict], to_sdf_path, floor_level: set):
     """The PhysX contact callback and the record it fills — (callback, log).
 
     The report is attached to the ROBOT's bodies, so it hears everything the robot
     touches: the floor, the props, and anything else in the warehouse. The floor is told
-    apart by the contact normal (see SUPPORT_NZ), so "collision" needs no list of what
-    the scene contains. `to_sdf_path` is `PhysicsSchemaTools.intToSdfPath`, passed IN so
+    apart by the contact normal (see SUPPORT_NZ) or by lying flat on it (`floor_level`,
+    the collider paths whose top is under FLOOR_LEVEL_M), so "collision" needs no list of
+    what the scene contains. `to_sdf_path` is `PhysicsSchemaTools.intToSdfPath`, passed IN so
     this stays a stdlib function at module scope (see ORDERING). The caller keeps
     `log["t"]` current: the callback fires from inside `world.step()`.
     """
@@ -329,7 +335,7 @@ def make_contact_log(robot_path: str, obstacles: list[dict], to_sdf_path):
                 continue  # CONTACT_LOST carries no points — nothing new was touched
             points = range(header.contact_data_offset, header.contact_data_offset + header.num_contact_data)
             flattest = min(abs(float(data[k].normal[2])) for k in points)
-            if flattest >= SUPPORT_NZ:
+            if flattest >= SUPPORT_NZ or other in floor_level:
                 log_["support_surfaces"].add(other)
                 continue
             event_type = str(header.type).split(".")[-1]
@@ -543,7 +549,16 @@ def run(simulation_app, args: argparse.Namespace) -> None:
     bodies = [p for p in Usd.PrimRange(stage.GetPrimAtPath(robot_path)) if p.HasAPI(UsdPhysics.RigidBodyAPI)]
     for body in bodies:
         PhysxSchema.PhysxContactReportAPI.Apply(body).CreateThresholdAttr().Set(0.0)
-    on_contact, contacts = make_contact_log(robot_path, obstacles, PhysicsSchemaTools.intToSdfPath)
+    bbox = UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_, UsdGeom.Tokens.render])
+    floor_level = {
+        str(p.GetPath())
+        for p in stage.Traverse()
+        if p.HasAPI(UsdPhysics.CollisionAPI)
+        and not str(p.GetPath()).startswith(robot_path + "/")
+        and bbox.ComputeWorldBound(p).ComputeAlignedRange().GetMax()[2] < FLOOR_LEVEL_M
+    }
+    log(f"floor-level colliders (never a collision): {len(floor_level)}")
+    on_contact, contacts = make_contact_log(robot_path, obstacles, PhysicsSchemaTools.intToSdfPath, floor_level)
     subscription = get_physx_simulation_interface().subscribe_contact_report_events(on_contact)
 
     # The top-view camera, and the roof out of its way (rendering only).
