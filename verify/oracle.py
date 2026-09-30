@@ -38,17 +38,17 @@ OUT_DIR = os.path.join("verify", "out")
 RUN_JSON = os.path.join(OUT_DIR, "run.json")
 CONTACTS_JSON = os.path.join(OUT_DIR, "contacts.json")
 TRAJECTORY = os.path.join(OUT_DIR, "trajectory.csv")
-SLOTS = ("a", "b", "c", "d", "e")
+SLOTS = tuple("abcdefghijklmno")
 
 
 def parse_args() -> argparse.Namespace:
-    """Same seven axes as the sim, tolerantly parsed (the platform replays the whole argv).
+    """Same axes as the sim (start, goal, slot_a..slot_o), tolerantly parsed.
 
     The verdict is read out of `run.json`, which records the axes the sim actually ran;
     these flags exist so a drifted argv contract fails here too, and so the two can be
     cross-checked (a stale `verify/out/` from an earlier local run is the usual cause).
     """
-    p = argparse.ArgumentParser(description="verdict for one carter straight-to-goal case")
+    p = argparse.ArgumentParser(description="verdict for one carter go-to-goal case")
     p.add_argument("--start", required=True)
     p.add_argument("--goal", required=True)
     for slot in SLOTS:
@@ -102,9 +102,11 @@ def describe(run: dict, contacts: dict) -> str:
     props = ", ".join(f"{ob['slot']}={ob['kind']}" for ob in run.get("obstacles") or []) or "none"
     start, goal = run.get("start") or {}, run.get("goal") or {}
     sha = ((run.get("robot_sw") or {}).get("sha256") or "")[:12]
+    pictures = run.get("pictures") or {}
+    picture = pictures.get("result") if pictures.get("result") and os.path.exists(pictures["result"]) else None
     return (
         f"{start.get('name')}->{goal.get('name')}: ended by {run.get('end_reason')}; {hit}; "
-        f"props {props}; robot_sw {sha}"
+        f"props {props}; robot_sw {sha}; picture {picture or 'none'}"
     )
 
 

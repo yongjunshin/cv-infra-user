@@ -4,8 +4,9 @@ cv-infra **소비자 예시**. "로봇 SW 프로젝트가 cv-infra를 실제로 
 보여주는 최소 형태 — 로봇 SW(`robot_sw/`: 드라이버 1개 + 지도), 검증 파일 3개, 워크플로 1개가 전부다.
 
 검증하는 질문은 하나다: **"이 로봇 SW가, 이 배치에서, 아무것도 들이받지 않고 목표점까지 가는가?"**
-케이스마다 로봇을 세 출발점 중 하나에 세우고, 세 목표점 중 하나를 주고, 고정된 슬롯 다섯 곳에
-창고 소품을 놓거나 비운 뒤, **로봇 SW가 모는 대로** 두고 본다.
+케이스마다 로봇을 다섯 출발점 중 하나에 세우고, 다섯 목표점 중 하나를 주고, 창고 바닥의 고정
+슬롯 열다섯 곳에 창고 소품을 놓거나 비운 뒤, **로봇 SW가 모는 대로** 두고 본다. 케이스마다 창고 전체를
+위에서 찍은 **실제 렌더 사진 두 장**(초기 배치 · 결과 덧그림)이 아티팩트로 돌아온다.
 
 PR을 열면 GitHub Actions가 플랫폼의 재사용 워크플로를 호출하고, 플랫폼은 GPU 워크스테이션의
 Isaac Sim에서 `verify/sim.py`를 **입력 조합마다 한 번씩** 돌린 뒤 `verify/oracle.py`의 판정을
@@ -23,32 +24,25 @@ PR에 Check · sticky 코멘트 · 아티팩트(케이스별 출력 zip + 시뮬
 다시 묻는다 — 개선되면 같은 케이스들이 초록으로 바뀌는 것이 CI에 그대로 보인다. 판정마다
 `run.json`에 **검증한 로봇 SW 파일의 sha256**이 남는다.
 
-## 레이아웃 — 출발 3 · 목표 3 · 소품 슬롯 5 (map frame, m)
+## 레이아웃 — 출발 5 · 목표 5 · 소품 슬롯 15 (map frame, m)
 
 ```
- G1 (-7.5, 6.0)            G2 (-5.0, 6.0)            G3 (-2.5, 6.0)        목표 행
+ G1 (-7,11)      G2 (-3.5,11)      G3 (0,11)      G4 (3.5,11)      G5 (7,11)        목표 행
 
- a (-7.5,2.5)   b (-6.25,2.5)   c (-5.0,2.5)   d (-3.75,2.5)   e (-2.5,2.5)    슬롯 행
+   i (-6,8)   j (-4,8)   k (-2,8)   l (0,8)   m (2,8)   n (4,8)   o (6,8)           슬롯 행 B
 
- S1 (-7.5,-1.0)            S2 (-5.0,-1.0)            S3 (-2.5,-1.0)        출발 행(+y를 향함)
+ a (-7,4)  b (-5,4)  c (-3,4)  d (-1,4)  e (1,4)  f (3,4)  g (5,4)  h (7,4)         슬롯 행 A
+
+ S1 (-7,1)       S2 (-3.5,1)       S3 (0,1)       S4 (3.5,1)       S5 (7,1)         출발 행(+y를 향함)
 ```
 
-- 이 구역은 **빈 바닥**이다: 씬의 nav2 지도가 전 구간 1.2 m 이상의 여유를 보이고, 출발→목표 직선
-  주행이 바닥 말고는 아무것도 건드리지 않았다(실측).
-- 어느 출발에서 어느 목표로 가든 **직선은 슬롯 행을 정확히 한 슬롯의 중심에서 지나고**, 나머지 슬롯
-  소품과는 0.27 m 이상 떨어진다. 그래서 직진밖에 못 하는 로봇은 **자기 직선 위의 그 슬롯이 비었을 때만**
-  통과한다 — 운 좋은 배치는 통과, 아니면 충돌:
-
-  | 슬롯 | 그 슬롯을 지나는 직선 |
-  |---|---|
-  | a | S1→G1 |
-  | b | S1→G2, S2→G1 |
-  | c | S1→G3, S2→G2, S3→G1 |
-  | d | S2→G3, S3→G2 |
-  | e | S3→G3 |
-
+- 창고 중앙의 **빈 바닥**(x −7…7, y 1…11)이다. 출발→목표 직선은 최대 17.2 m.
+- 한 행의 슬롯은 2 m 간격이라, 이웃 둘이 모두 차도 사이에 1.3–1.4 m가 남는다 — 틈을 찾는 로봇은
+  지나가고, 직진만 하는 로봇은 자기 직선 위의 소품에 부딪힌다. 두 행은 서로 엇갈려 있어 A행의 틈
+  바로 뒤에 B행의 슬롯이 온다.
 - 슬롯 내용물: `empty` · `cardbox`(SM_CardBoxA_01, 0.70×0.50×0.50 m) · `barrel`
   (SM_BarelPlastic_A_01, 0.60×0.71×0.90 m). 둘 다 정적 콜라이더라 밀려나지 않는다.
+- PICT(k=2)가 **28 케이스**를 뽑는다. 출발×목표 25쌍이 모두 나오고, 케이스마다 슬롯 6–14곳이 찬다.
 
 ## 파일
 
@@ -56,8 +50,8 @@ PR에 Check · sticky 코멘트 · 아티팩트(케이스별 출력 zip + 시뮬
 |---|---|
 | `robot_sw/driver.py` | **검증 대상.** 위 표 참고. 인터페이스: `Driver(goal_x, goal_y)` 한 번, 그 뒤 `step(x, y, yaw, scan) -> (v, w)`. stdlib + Pillow(지도 이미지)만 쓰고 Isaac을 모른다. |
 | `robot_sw/maps/` | **로봇의 정적 지도.** NVIDIA가 이 씬용으로 공개한 nav2 점유 지도 — 업스트림과 바이트 동일(출처·sha256은 `maps/README.md`). |
-| `verify/sim.py` | **표준 Isaac standalone 실행 entrypoint = 테스트 하네스.** 창고 씬(공식 ROS 2 내비게이션 샘플)을 열고, 로봇을 `--start`로 텔레포트하고, `--slot_*`대로 소품을 놓고, `robot_sw/`의 드라이버에 `--goal`을 준 뒤 매 물리 스텝 자세와 최신 라이다 스캔을 건네고 그 명령을 바퀴에 전한다. 목표 0.30 m 이내 도착 · 첫 충돌 1 s 뒤 · 30 sim-s 중 먼저 오는 것에서 끝내고 `verify/out/`에 **trajectory.csv · contacts.json · run.json**을 쓴다. |
-| `verify/param_space.pict` | **입력 공간**(Microsoft PICT 문법). 축 7개(`start`·`goal`·`slot_a…e`) = argv 플래그: `start: S1` → `--start=S1`. 플랫폼이 페어와이즈(k=2)로 **16 케이스**를 뽑는다 — 모든 출발×목표 쌍이 한 번 이상 나온다. |
+| `verify/sim.py` | **표준 Isaac standalone 실행 entrypoint = 테스트 하네스.** 창고 씬(공식 ROS 2 내비게이션 샘플)을 열고, 로봇을 `--start`로 텔레포트하고, `--slot_*`대로 소품을 놓고, `robot_sw/`의 드라이버에 `--goal`을 준 뒤 매 물리 스텝 자세와 최신 라이다 스캔을 건네고 그 명령을 바퀴에 전한다. 목표 0.30 m 이내 도착 · 첫 충돌 1 s 뒤 · 75 sim-s 중 먼저 오는 것에서 끝내고 `verify/out/`에 **trajectory.csv · contacts.json · run.json**과 **탑뷰 사진 두 장**(아래)을 쓴다. |
+| `verify/param_space.pict` | **입력 공간**(Microsoft PICT 문법). 축 17개(`start`·`goal`·`slot_a…o`) = argv 플래그: `start: S1` → `--start=S1`. 플랫폼이 페어와이즈(k=2)로 **28 케이스**를 뽑는다 — 모든 출발×목표 쌍이 한 번 이상 나온다. |
 | `verify/oracle.py` | **판정.** 시뮬 직후 같은 이미지·같은 argv로(GPU 없이) 돌아 위 세 파일을 읽고 평평한 JSON dict 한 줄을 stdout에 낸다. stdlib만 쓴다. |
 | `verify/out/.gitkeep` | 출력 디렉토리를 **커밋된 상태로** 두기 위한 파일 — 아래 참고. |
 | `.github/workflows/verify.yml` | 잡 하나(`uses: …@…`)와 `with:` 입력 8개. 이 저장소가 유지하는 통합 표면 전부. |
@@ -75,13 +69,13 @@ PR에 Check · sticky 코멘트 · 아티팩트(케이스별 출력 zip + 시뮬
 
 | 키 | 타입 | 뜻 |
 |---|---|---|
-| `reached_goal` | 체크 | 30 sim-s 안에 목표점 0.3 m 이내로 들어왔나 |
+| `reached_goal` | 체크 | 75 sim-s 안에 목표점 0.3 m 이내로 들어왔나 |
 | `collision_free` | 체크 | 로봇의 **어떤 바디도** 바닥 말고 **아무것에도**(소품·선반·벽) 닿지 않았나 |
 | `time_to_goal_s` | 지표/`null` | 도착까지 sim 초. 못 갔으면 `null`(실패는 `reached_goal`이 말한다) |
 | `final_dist_m` | 지표 | 종료 시점의 목표점까지 거리 |
 | `min_clearance_m` | 지표/`null` | 주행 중 로봇 축 중심에서 가장 가까운 소품 외곽까지 거리. 소품이 없으면 `null` |
 | `path_len_m` | 지표/`null` | 실제 주행 경로 길이. `trajectory.csv`가 없으면 `null` |
-| `note` | 메모 | 끝난 이유(reached·collision·budget), 첫 충돌("wheel_left ↔ slot c cardbox at t=7.10s"), 소품 배치, 로봇 SW sha256 앞 12자 |
+| `note` | 메모 | 끝난 이유(reached·collision·budget), 첫 충돌("wheel_left ↔ slot c cardbox at t=7.10s"), 소품 배치, 로봇 SW sha256 앞 12자, 결과 사진 경로 |
 
 > ⚠ **체크 키는 "좋은 쪽"으로 이름 짓는다.** 플랫폼은 **모든 bool이 true**여야 pass로 본다. 그래서
 > `collided`(닿았다)가 아니라 `collision_free`(안 닿았다)다 — 전자로 쓰면 로봇이 **박았을 때만
@@ -91,6 +85,21 @@ PR에 Check · sticky 코멘트 · 아티팩트(케이스별 출력 zip + 시뮬
 > 끝내고, stock `python.sh`는 비0을 1로 뭉갠다. 그래서 `sim.py`의 종료 코드는 pass/fail을 실을 수
 > 없고, 오직 "이 케이스가 ERROR였다"만 의미한다. pass/fail은 전부 `oracle.py`가 결정한다. 판정에
 > 쓸 산출물은 전부 `close()` **이전에** 쓴다.
+
+## 케이스마다 사진 두 장 — 하네스가 찍고 덧그린다
+
+| 파일 | 무엇 |
+|---|---|
+| `verify/out/topview_initial.png` | **초기 배치.** 소품을 놓고 로봇을 출발점에 세운 직후, 창고 전체를 60 m 위 정사영에 가까운 카메라로 찍은 **실제 렌더**(1200×1800 px, 바닥에서 약 54.5 px/m). 지붕·조명·천장 보는 가려서 바닥이 보인다. |
+| `verify/out/topview_result.png` | **결과.** 위 사진 위에: 슬롯 이름, 찬 슬롯(노란 상자), 출발·목표 전부(흐리게)와 **이 케이스의 출발(청록 원)·목표(보라 원)**, 실제 주행 경로(청록 선), 첫 충돌 지점(빨간 ×), 상단 띠(초록 = 도착 · 빨강 = 충돌 · 주황 = 시간 초과, 첫 충돌 바디 ↔ 상대). |
+
+**왜 오라클이 아니라 하네스가 그리나** — 플랫폼은 오라클에게 출력 디렉토리를 **읽기 전용**으로
+마운트한다(판정이 증거를 고칠 수 없게). 그래서 그림은 `sim.py`가 에피소드 끝에 같은 `verify/out/`에
+쓰고, 오라클은 그 경로를 `note`에 남긴다. 사진은 **판정에 쓰이지 않는다** — 판정은 궤적·접촉 기록으로만
+한다. 캡처나 그리기가 실패하면 경고만 남기고 케이스는 그대로 판정된다.
+
+카메라는 월드 좌표에 고정돼 있어 픽셀 ↔ 미터 변환이 식 하나다(`to_pixel`): 로봇 위치를 찍어 보정한
+오차는 5 px 이내(실측). 한 장 렌더에 0.25 s(실측).
 
 ## 시뮬 이미지는 다이제스트로 고정한다
 
@@ -109,10 +118,8 @@ CI가 돌린 것과 다른 이미지가 된다.
 
 ## 로컬에서 같은 케이스 돌리기
 
-CI가 하는 일과 같다 — 저장소 루트에서. 아래 일곱 개 플래그는 `verify/param_space.pict`가 펼쳐지는
-16행 중 **한 행 그대로**다(S2에서 G2로 가는 직선 위 슬롯 c에 카드박스가 있고 이웃 b·d도 막힌
-케이스 — 지금 로봇은 빈 슬롯 a나 e 쪽으로 돌아 약 26 sim-s에 도착한다. 직진만 하던 이전 로봇은
-7.85 s에 부딪혔다):
+CI가 하는 일과 같다 — 저장소 루트에서. 아래 열일곱 개 플래그는 `verify/param_space.pict`가 펼쳐지는
+28행 중 **한 행 그대로**다(S4에서 G5로 — 앞을 막은 슬롯 f 배럴과 g 카드박스 사이 틈으로 빠져 약 26.5 sim-s에 도착한다, 실측):
 
 ```bash
 docker run --rm --gpus all \
@@ -121,15 +128,19 @@ docker run --rm --gpus all \
   --entrypoint /bin/sh \
   nvcr.io/nvidia/isaac-sim:5.1.0@sha256:f3563cb2ba0c18af0b2fb321360dcb73a917b899f879e3213623d6bee484fa54 \
   -lc 'exec "$0" "$@"' verify/sim.py \
-  --start=S2 --goal=G2 --slot_a=empty --slot_b=cardbox --slot_c=cardbox --slot_d=cardbox --slot_e=empty
+  --start=S4 --goal=G5 --slot_a=barrel --slot_b=cardbox --slot_c=barrel --slot_d=empty --slot_e=empty \
+  --slot_f=barrel --slot_g=cardbox --slot_h=cardbox --slot_i=empty --slot_j=barrel --slot_k=empty \
+  --slot_l=barrel --slot_m=barrel --slot_n=empty --slot_o=barrel
 
 python3 verify/oracle.py \
-  --start=S2 --goal=G2 --slot_a=empty --slot_b=cardbox --slot_c=cardbox --slot_d=cardbox --slot_e=empty
+  --start=S4 --goal=G5 --slot_a=barrel --slot_b=cardbox --slot_c=barrel --slot_d=empty --slot_e=empty \
+  --slot_f=barrel --slot_g=cardbox --slot_h=cardbox --slot_i=empty --slot_j=barrel --slot_k=empty \
+  --slot_l=barrel --slot_m=barrel --slot_n=empty --slot_o=barrel
 ```
 
 `ACCEPT_EULA`가 없으면 `sim.py`는 부팅 전에 거부한다(exit 3). 컨테이너에는 디스플레이가 없으므로
 기본은 headless고, `--gui`는 데스크톱에 설치된 Isaac에서 볼 때만 쓴다(`./python.sh verify/sim.py
---gui --start=S2 …`). CI에서 GUI로 부팅하면 행이나 크래시로 끝난다.
+--gui --start=S4 …`). CI에서 GUI로 부팅하면 행이나 크래시로 끝난다.
 
 ## `verify/out/.gitkeep`이 필요한 이유
 
@@ -157,7 +168,7 @@ git은 빈 디렉토리를 추적하지 않으므로 `.gitkeep`을 커밋해 둔
   |n_z| = 1.000, 바퀴가 카드박스에 닿은 접촉은 0.000. 그래서 소품뿐 아니라 선반·벽도 잡히고, 씬에
   무엇이 있는지 목록을 알 필요가 없다. (섀시 `ContactSensor`는 **바퀴가 먼저 닿아** 박스를 놓쳤다 — 실측.)
 - **에피소드 규칙은 테스트의 것이다.** 첫 충돌 1 s 뒤에 끝낸다(판정은 이미 정해졌고, 직진 로봇은 거기서
-  계속 밀기만 한다). 예산 30 sim-s는 가장 긴 직선(8.6 m, ~23 s)을 덮는다.
+  계속 밀기만 한다). 예산 75 sim-s는 가장 긴 직선(17.2 m)을 순항 0.4 m/s로 가는 ~43 s에 우회 여유를 더한 것이다.
 - **ROS 2도 nav2도 쓰지 않는다.** 씬의 ROS 2 OmniGraph들은 그대로 두되 아무도 구독하지 않은 채 논다.
   nav2에서 가져온 것은 지도 **파일**뿐이다. 로봇 SW를 ROS 2 노드(`/odom`·`/scan` → `/cmd_vel`)나 nav2로
   바꾸는 것도 `robot_sw/`의 일이다 — 그때는 번들 브리지가 `setup_ros_env.sh` 없이는 뜨지 않는다는

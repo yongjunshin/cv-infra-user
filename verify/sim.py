@@ -5,22 +5,29 @@ A STANDARD Isaac Sim standalone script, and ONLY a test harness. cv-infra never 
 this file and knows nothing about what it means; per PICT case it runs, inside the stock
 Isaac image,
 
-    verify/sim.py --start=S1 --goal=G3 --slot_a=empty --slot_b=cardbox --slot_c=empty \
-      --slot_d=barrel --slot_e=empty
+    verify/sim.py --start=S1 --goal=G4 --slot_a=empty --slot_b=cardbox … --slot_o=barrel
 
 through a `/bin/sh -lc 'exec "$0" "$@"'` wrapper — this file is the executable
 entrypoint and the shebang above, not the platform, picks the interpreter — with this
 repository checked out read-only at the working directory, `verify/out/` overlaid
 read-write, and `CV_SEED` in the environment.
 
-WHAT ONE CASE IS: build the world the axes name (the robot on one of three start
-points, one of three goals, a stock warehouse prop in each occupied slot of a fixed
-row), hand the goal to the robot's software, and then only WATCH: every physics step
+WHAT ONE CASE IS: build the world the axes name (the robot on one of five start
+points, one of five goals, a stock warehouse prop in each occupied slot of two fixed
+rows), hand the goal to the robot's software, and then only WATCH: every physics step
 the harness gives `robot_sw/driver.py` its pose and the latest scan of its lidar, turns
 the (v, w) it answers into wheel spin, and records where the robot went and what it
 touched. The episode ends when the robot is within 0.30 m of the goal, 1 s after its
-first collision, or after SIM_TIME_MAX_S sim-seconds. `verify/oracle.py` turns the three
-files this writes into {reached_goal, collision_free, …}.
+first collision, or after SIM_TIME_MAX_S sim-seconds. `verify/oracle.py` turns the files
+this writes into {reached_goal, collision_free, …}.
+
+PICTURES, ALSO THE HARNESS'S JOB: before the robot moves, a camera 60 m above the
+warehouse (roof hidden) renders the whole building with the case's props and robot in
+place -> `verify/out/topview_initial.png`. When the episode ends, the harness draws the
+start, the goal, the driven path and the first collision on that very picture ->
+`verify/out/topview_result.png`. It is drawn here and not in the oracle because the
+platform mounts `verify/out/` READ-ONLY for the oracle (it may judge the evidence, never
+edit it); the oracle cites the picture in its note.
 
 THE HARNESS ADDS NO INTELLIGENCE. It does not steer, avoid, slow down or plan. The robot
 software gets the goal once, then its pose and what its own lidar measures — never the
@@ -73,27 +80,24 @@ CHASSIS_CHILD = "chassis_link"
 ROBOT_SW = os.path.join("robot_sw", "driver.py")
 
 # --------------------------------------------------------------------------------------
-# The layout. Map frame (= world frame; the scene's nav2 map says so), metres. The area
-# x in [-8, -2], y in [-1.5, 6.5] is open floor: the map shows >= 1.2 m of clearance
-# everywhere in it, and the straight drives between the start and goal rows touched
-# nothing but the floor (MEASURED 2026-09-28, probe drives on this image).
+# The layout. Map frame (= world frame; the scene's nav2 map says so), metres. The whole
+# floor x in [-7.5, 7.5], y in [-0.5, 11.5] is open: the map shows >= 1.7 m of clearance
+# at every start and goal and >= 1.8 m at every slot (COMPUTED from the map's distance
+# transform, 2026-09-30); the west shelves, the south block, the two forklifts and the
+# east wall are all outside it.
 #
-# The geometry is chosen so that a straight start->goal line crosses the slot row at
-# EXACTLY one slot centre, and clears every other slot footprint by >= 0.27 m (robot
-# half-width 0.24 m chassis / ~0.26 m wheels, both MEASURED). A straight driver therefore
-# passes iff the one slot on its line is empty — no case hinges on centimetres:
-#   slot a: S1->G1 · slot b: S1->G2, S2->G1 · slot c: S1->G3, S2->G2, S3->G1
-#   slot d: S2->G3, S3->G2 · slot e: S3->G3
+# Five starts along the south, five goals along the north, and fifteen slots in two
+# staggered rows between them. Slots in a row are 2.0 m apart, so two occupied
+# neighbours still leave a 1.3-1.4 m gap — a robot that looks for gaps can get through;
+# one that only drives straight hits whatever stands on its line.
 # --------------------------------------------------------------------------------------
 START_YAW_RAD = math.pi / 2  # every start faces up the floor, toward the goal row
-STARTS = {"S1": (-7.5, -1.0), "S2": (-5.0, -1.0), "S3": (-2.5, -1.0)}
-GOALS = {"G1": (-7.5, 6.0), "G2": (-5.0, 6.0), "G3": (-2.5, 6.0)}
+_XS = (-7.0, -3.5, 0.0, 3.5, 7.0)
+STARTS = {f"S{i + 1}": (x, 1.0) for i, x in enumerate(_XS)}
+GOALS = {f"G{i + 1}": (x, 11.0) for i, x in enumerate(_XS)}
 SLOTS = {
-    "a": (-7.5, 2.5),
-    "b": (-6.25, 2.5),
-    "c": (-5.0, 2.5),
-    "d": (-3.75, 2.5),
-    "e": (-2.5, 2.5),
+    **{"abcdefgh"[i]: (x, 4.0) for i, x in enumerate((-7.0, -5.0, -3.0, -1.0, 1.0, 3.0, 5.0, 7.0))},
+    **{"ijklmno"[i]: (x, 8.0) for i, x in enumerate((-6.0, -4.0, -2.0, 0.0, 2.0, 4.0, 6.0))},
 }
 
 # Stock Simple_Warehouse props: (asset, x size, y size) in metres, placed axis-aligned.
@@ -128,7 +132,7 @@ LIDAR_RANGE_M = 10.0
 LIDAR_HZ = 10.0
 
 # The episode — the test's rules, not the robot's.
-SIM_TIME_MAX_S = 30.0  # the longest line (8.6 m) takes ~23 s at the driver's 0.4 m/s
+SIM_TIME_MAX_S = 75.0  # the longest start->goal line (17.2 m) takes ~43 s at 0.4 m/s
 GOAL_RADIUS_M = 0.30  # "reached"
 COLLISION_TAIL_S = 1.0  # keep watching this long after the first collision, then stop
 # A contact whose every point has |normal z| >= this is the floor carrying the robot;
@@ -136,12 +140,28 @@ COLLISION_TAIL_S = 1.0  # keep watching this long after the first collision, the
 # exactly |nz| = 1.000, the wheels against a cardbox exactly 0.000.
 SUPPORT_NZ = 0.5
 
+# The top-view camera — part of the test rig, not of the robot. A pinhole straight down
+# from TOPCAM_HEIGHT_M (an identity-rotated USD camera looks along -Z with +X right and +Y
+# up in the image), framing the whole warehouse interior. Everything whose name says it
+# is roof (ceiling, roof, lamp, beam) is made invisible — rendering only, physics and the
+# lidar are untouched. MEASURED 2026-09-30: markers at known floor positions land within
+# 5 px (0.09 m) of the pixel this model predicts; one render takes ~0.25 s.
+TOPCAM_PATH = "/World/cv_topcam"
+TOPCAM_SIZE_PX = (1200, 1800)
+TOPCAM_CENTRE = (-0.45, 2.9)
+TOPCAM_HEIGHT_M = 60.0
+TOPCAM_WIDTH_M = 22.0
+TOPCAM_APERTURE_MM = 20.955
+ROOF_WORDS = ("ceiling", "roof", "lamp", "beam")
+
 # Checkout-relative, because the platform mounts the case's output directory over
 # exactly this path (and `cd`s to the checkout). Same paths when run locally.
 OUT_DIR = os.path.join("verify", "out")
 OUT_TRAJECTORY = os.path.join(OUT_DIR, "trajectory.csv")
 OUT_CONTACTS = os.path.join(OUT_DIR, "contacts.json")
 OUT_RUN = os.path.join(OUT_DIR, "run.json")
+OUT_TOPVIEW = os.path.join(OUT_DIR, "topview_initial.png")
+OUT_RESULT = os.path.join(OUT_DIR, "topview_result.png")
 
 WARMUP_STEPS = 8  # physics/renderer are unreliable on the very first steps
 MAX_EVENTS = 200  # a pinned robot reports every step — cap the dump
@@ -332,6 +352,112 @@ def make_contact_log(robot_path: str, obstacles: list[dict], to_sdf_path):
 
 
 # --------------------------------------------------------------------------------------
+# Pictures: the top-view camera model and the overlay. Pure functions of the rig
+# constants; Pillow is imported where it is used (it ships in the Isaac bundle).
+# --------------------------------------------------------------------------------------
+
+
+def topcam_focal_mm() -> float:
+    return TOPCAM_HEIGHT_M * TOPCAM_APERTURE_MM / TOPCAM_WIDTH_M
+
+
+def to_pixel(x: float, y: float) -> tuple[float, float]:
+    """World floor point -> top-view pixel (pinhole straight down, z = 0)."""
+    width, height = TOPCAM_SIZE_PX
+    px_per_m = topcam_focal_mm() / TOPCAM_APERTURE_MM * width / TOPCAM_HEIGHT_M
+    return (
+        width / 2 + (x - TOPCAM_CENTRE[0]) * px_per_m,
+        height / 2 - (y - TOPCAM_CENTRE[1]) * px_per_m,
+    )
+
+
+def capture_top_view(world, np) -> None:
+    """Render one frame of the top-view camera to OUT_TOPVIEW, then let the camera go."""
+    import omni.replicator.core as rep  # noqa: PLC0415
+    from PIL import Image  # noqa: PLC0415
+
+    product = rep.create.render_product(TOPCAM_PATH, TOPCAM_SIZE_PX)
+    annotator = rep.AnnotatorRegistry.get_annotator("rgb")
+    annotator.attach([product])
+    frame = None
+    # A few renders let the path tracer settle; plain steps usually deliver the frame,
+    # the orchestrator step is the fallback the platform's own smoke test needed.
+    for attempt in range(40):
+        world.step(render=True)
+        frame = annotator.get_data()
+        if attempt >= 8 and frame is not None and getattr(frame, "size", 0) and float(frame.mean()) > 1.0:
+            break
+    else:
+        rep.orchestrator.step()
+        frame = annotator.get_data()
+    if frame is None or not getattr(frame, "size", 0):
+        raise RuntimeError("top-view camera delivered no frame")
+    Image.fromarray(np.asarray(frame)[:, :, :3].astype(np.uint8)).save(OUT_TOPVIEW)
+    annotator.detach()
+    product.destroy()
+    log(f"top view captured -> {OUT_TOPVIEW}")
+
+
+def draw_result(args, obstacles: list[dict], samples: list[tuple], first_collision, end_reason: str) -> None:
+    """Draw the case onto the initial top view: all starts/goals, this case's pair, the
+    occupied slots, the path the robot drove and where it first hit something."""
+    from PIL import Image, ImageDraw, ImageFont  # noqa: PLC0415
+
+    image = Image.open(OUT_TOPVIEW).convert("RGB")
+    draw = ImageDraw.Draw(image, "RGBA")
+    width, height = image.size
+    m = to_pixel(1.0, 0.0)[0] - to_pixel(0.0, 0.0)[0]  # pixels per metre
+    small, big = ImageFont.load_default(size=22), ImageFont.load_default(size=30)  # Pillow's own TTF
+
+    def label(x, y, dy_m, text, font, alpha):
+        u, v = to_pixel(x, y)
+        draw.text((u, v + dy_m * m), text, font=font, anchor="mm", fill=(255, 255, 255, alpha), stroke_width=2, stroke_fill=(0, 0, 0, alpha))
+
+    def ring(x, y, r_m, colour, w):
+        u, v = to_pixel(x, y)
+        draw.ellipse((u - r_m * m, v - r_m * m, u + r_m * m, v + r_m * m), outline=colour, width=w)
+
+    for slot, (x, y) in SLOTS.items():  # every slot, labelled; occupied ones boxed
+        label(x, y, 0.75, slot, small, 220)
+    for ob in obstacles:
+        (u0, v0), (u1, v1) = to_pixel(ob["x"] - ob["size_x"] / 2, ob["y"] + ob["size_y"] / 2), to_pixel(
+            ob["x"] + ob["size_x"] / 2, ob["y"] - ob["size_y"] / 2
+        )
+        draw.rectangle((u0 - 2, v0 - 2, u1 + 2, v1 + 2), outline=(255, 214, 0, 255), width=3)
+    for name, (x, y) in STARTS.items():
+        label(x, y, 0.95, name, big, 140 if name != args.start else 255)
+    for name, (x, y) in GOALS.items():
+        if name != args.goal:
+            ring(x, y, GOAL_RADIUS_M, (255, 255, 255, 90), 2)
+        label(x, y, -1.15, name, big, 140 if name != args.goal else 255)
+    gx, gy = GOALS[args.goal]
+    ring(gx, gy, GOAL_RADIUS_M, (170, 120, 255, 255), 5)  # the goal, highlighted
+    ring(gx, gy, 0.8, (170, 120, 255, 160), 2)
+    sx, sy = STARTS[args.start]
+    ring(sx, sy, 0.5, (0, 230, 255, 255), 5)  # the start, highlighted
+    path = [to_pixel(r[1], r[2]) for r in samples[::6]] + ([to_pixel(samples[-1][1], samples[-1][2])] if samples else [])
+    if len(path) > 1:
+        draw.line(path, fill=(0, 230, 255, 255), width=5, joint="curve")
+    if first_collision is not None:
+        hit = min(samples, key=lambda r: abs(r[0] - first_collision["t"]))
+        u, v = to_pixel(hit[1], hit[2])
+        r = 0.45 * m
+        draw.line((u - r, v - r, u + r, v + r), fill=(255, 40, 40, 255), width=7)
+        draw.line((u - r, v + r, u + r, v - r), fill=(255, 40, 40, 255), width=7)
+        ring(hit[1], hit[2], 0.7, (255, 40, 40, 255), 4)
+    verdict = {"reached": (60, 200, 90), "collision": (255, 60, 60), "budget": (255, 160, 40)}[end_reason]
+    lines = [f"{args.start} -> {args.goal}   ended by: {end_reason}" + (f" at {samples[-1][0]:.1f} s" if samples else "")]
+    if first_collision:
+        lines.append(f"first collision {first_collision['body']} <-> {first_collision['label']} at {first_collision['t']:.1f} s")
+    bar = 16 + 32 * len(lines)
+    draw.rectangle((0, 0, width, bar), fill=(0, 0, 0, 190))
+    draw.rectangle((0, 0, 18, bar), fill=verdict + (255,))
+    for i, text in enumerate(lines):
+        draw.text((30, 24 + 32 * i), text, font=big if i == 0 else small, anchor="lm", fill=(255, 255, 255, 255))
+    image.save(OUT_RESULT)
+
+
+# --------------------------------------------------------------------------------------
 # Output. Written before SimulationApp.close(), because the exit code carries nothing.
 # --------------------------------------------------------------------------------------
 
@@ -420,9 +546,26 @@ def run(simulation_app, args: argparse.Namespace) -> None:
     on_contact, contacts = make_contact_log(robot_path, obstacles, PhysicsSchemaTools.intToSdfPath)
     subscription = get_physx_simulation_interface().subscribe_contact_report_events(on_contact)
 
+    # The top-view camera, and the roof out of its way (rendering only).
+    for prim in stage.Traverse():
+        if any(word in prim.GetName().lower() for word in ROOF_WORDS) and prim.IsA(UsdGeom.Imageable):
+            UsdGeom.Imageable(prim).MakeInvisible()
+    camera = UsdGeom.Camera.Define(stage, TOPCAM_PATH)
+    UsdGeom.Xformable(camera).AddTranslateOp().Set(Gf.Vec3d(TOPCAM_CENTRE[0], TOPCAM_CENTRE[1], TOPCAM_HEIGHT_M))
+    camera.CreateFocalLengthAttr(topcam_focal_mm())
+    camera.CreateHorizontalApertureAttr(TOPCAM_APERTURE_MM)
+    camera.CreateVerticalApertureAttr(TOPCAM_APERTURE_MM * TOPCAM_SIZE_PX[1] / TOPCAM_SIZE_PX[0])
+    camera.CreateClippingRangeAttr(Gf.Vec2f(1.0, 200.0))
+
     world.reset()
     for _ in range(WARMUP_STEPS):
         world.step(render=True)
+
+    os.makedirs(OUT_DIR, exist_ok=True)
+    try:  # a picture is evidence, not the verdict: a render hiccup must not ERROR the case
+        capture_top_view(world, np)
+    except Exception as exc:
+        log(f"WARN top view not captured: {exc!r}")
 
     chassis = SingleXFormPrim(chassis_path)
     robot = SingleArticulation(robot_path)
@@ -486,7 +629,6 @@ def run(simulation_app, args: argparse.Namespace) -> None:
     position, _ = chassis.get_world_pose()
     final_dist = math.hypot(goal[0] - float(position[0]), goal[1] - float(position[1]))
 
-    os.makedirs(OUT_DIR, exist_ok=True)
     write_trajectory(samples)
     write_json(
         OUT_CONTACTS,
@@ -502,13 +644,15 @@ def run(simulation_app, args: argparse.Namespace) -> None:
     write_json(
         OUT_RUN,
         {
-            # Exactly the seven axes, straight off argv — the oracle cross-checks them.
+            # Exactly the axes, straight off argv — the oracle cross-checks them.
             "axes": {k: v for k, v in vars(args).items() if k != "gui"},
             "start": {"name": args.start, "x": start_x, "y": start_y, "yaw": START_YAW_RAD},
             "goal": {"name": args.goal, "x": goal[0], "y": goal[1]},
             "obstacles": obstacles,
             "robot_sw": {"path": ROBOT_SW, "sha256": robot_sw_sha},
             "lidar": {"z_m": LIDAR_Z_M, "beams": LIDAR_BEAMS, "range_m": LIDAR_RANGE_M, "hz": LIDAR_HZ},
+            "pictures": {"initial": OUT_TOPVIEW, "result": OUT_RESULT, "camera": {
+                "centre": TOPCAM_CENTRE, "height_m": TOPCAM_HEIGHT_M, "width_m": TOPCAM_WIDTH_M, "size_px": TOPCAM_SIZE_PX}},
             "reached": reached_t is not None,
             "time_to_goal_s": None if reached_t is None else round(reached_t, 4),
             "collided": contacts["first_collision"] is not None,
@@ -519,6 +663,11 @@ def run(simulation_app, args: argparse.Namespace) -> None:
             "seed": os.environ.get("CV_SEED"),
         },
     )
+    if os.path.exists(OUT_TOPVIEW):
+        try:
+            draw_result(args, obstacles, samples, contacts["first_collision"], end_reason)
+        except Exception as exc:
+            log(f"WARN result picture not drawn: {exc!r}")
     log(
         f"wrote {OUT_DIR}/: {len(samples)} samples over {t:.2f} sim-s, end={end_reason}, "
         f"final dist {final_dist:.3f} m, {contacts['collision_event_count']} collision events"

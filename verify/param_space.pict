@@ -1,39 +1,28 @@
-# verify/param_space.pict — carter "can this robot's software reach the goal?"
+# verify/param_space.pict — carter "can this robot's software reach the goal?", warehouse scale
 #
-# One row = one case. Every axis is a flag of verify/sim.py (`--name=value`, text) and
-# the harness owns what the values MEAN. cv-infra expands this with PICT (k=2), runs the
-# harness once per row inside the stock Isaac 5.1.0 image, collects verify/out/, and
-# reads verify/oracle.py's flat JSON by TYPE (bool = check, number = metric, str = note).
-# PICT reads a trailing `# …` on a value line as part of the value, so every comment here
-# sits on its own line.
+# One row = one case. Every axis is a flag of verify/sim.py (`--name=value`, text) and the
+# harness owns what the values MEAN. cv-infra expands this with PICT (k=2), runs the harness
+# once per row inside the stock Isaac 5.1.0 image, collects verify/out/ (including the two
+# top-view pictures), and reads verify/oracle.py's flat JSON by TYPE. PICT reads a trailing
+# `# …` on a value line as part of the value, so every comment sits on its own line.
 #
-# THE LAYOUT (map frame = world frame, metres; open floor, MEASURED — see verify/sim.py):
+# THE LAYOUT (map frame = world frame, metres; open warehouse floor — see verify/sim.py):
 #
-#   G1 (-7.5, 6.0)        G2 (-5.0, 6.0)        G3 (-2.5, 6.0)       goal row
+#   goals   G1 (-7, 11)  G2 (-3.5, 11)  G3 (0, 11)  G4 (3.5, 11)  G5 (7, 11)
+#   row B   i (-6, 8)  j (-4, 8)  k (-2, 8)  l (0, 8)  m (2, 8)  n (4, 8)  o (6, 8)
+#   row A   a (-7, 4)  b (-5, 4)  c (-3, 4)  d (-1, 4)  e (1, 4)  f (3, 4)  g (5, 4)  h (7, 4)
+#   starts  S1 (-7, 1)   S2 (-3.5, 1)   S3 (0, 1)   S4 (3.5, 1)   S5 (7, 1)   facing +y
 #
-#   a (-7.5, 2.5)  b (-6.25, 2.5)  c (-5.0, 2.5)  d (-3.75, 2.5)  e (-2.5, 2.5)   slot row
+# Slots in a row are 2 m apart, so even two occupied neighbours leave a 1.3-1.4 m gap:
+# a robot that finds gaps gets through, one that drives straight hits what is on its line.
 #
-#   S1 (-7.5, -1.0)       S2 (-5.0, -1.0)       S3 (-2.5, -1.0)      start row, facing +y
-#
-# A straight line from any start to any goal crosses the slot row at EXACTLY one slot
-# centre and clears every other slot by >= 0.27 m:
-#   slot a: S1->G1 · slot b: S1->G2, S2->G1 · slot c: S1->G3, S2->G2, S3->G1
-#   slot d: S2->G3, S3->G2 · slot e: S3->G3
-# So a robot that can only drive straight passes exactly when the one slot on its line
-# is empty — some layouts are lucky, some are not. A robot that can avoid passes more of
-# them, but only if it finds a gap: two occupied neighbours leave 0.55-0.65 m between
-# them, too narrow for the carter (0.48 m wide) to pass with any margin, so the way
-# around is an empty slot or the end of the row. That difference is what this space
-# measures.
+# At k=2 PICT (pinned build) makes 28 rows: all 25 start x goal pairs, 6-14 slots filled.
 #
 # CASE IDENTITY is a hash of a row's own assignment: a baseline follows a case across
-# commits only as long as its values are untouched. Renaming a value is a deliberate act.
-#
-# At k=2 the pinned PICT build emits 16 rows (MEASURED 2026-09-28); every start x goal
-# pair appears at least once.
+# commits only as long as its values are untouched.
 
-start:   S1, S2, S3
-goal:    G1, G2, G3
+start:   S1, S2, S3, S4, S5
+goal:    G1, G2, G3, G4, G5
 
 # Each slot is empty or holds one stock warehouse prop (static collider, axis-aligned):
 #   cardbox = SM_CardBoxA_01        0.70 x 0.50 x 0.50 m
@@ -43,3 +32,13 @@ slot_b:  empty, cardbox, barrel
 slot_c:  empty, cardbox, barrel
 slot_d:  empty, cardbox, barrel
 slot_e:  empty, cardbox, barrel
+slot_f:  empty, cardbox, barrel
+slot_g:  empty, cardbox, barrel
+slot_h:  empty, cardbox, barrel
+slot_i:  empty, cardbox, barrel
+slot_j:  empty, cardbox, barrel
+slot_k:  empty, cardbox, barrel
+slot_l:  empty, cardbox, barrel
+slot_m:  empty, cardbox, barrel
+slot_n:  empty, cardbox, barrel
+slot_o:  empty, cardbox, barrel
